@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { chatsData } from '../data/chats';
-import { messagesData } from '../data/messages';
+import { Menu, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import ChatHeader from '../components/ChatHeader';
 import MessageBubble from '../components/MessageBubble';
@@ -9,65 +8,319 @@ import MessageInput from '../components/MessageInput';
 import EmptyChat from '../components/EmptyChat';
 import ProfileModal from '../components/ProfileModal';
 import TypingIndicator from '../components/TypingIndicator';
-import { Menu, X } from 'lucide-react';
 import socket from '../socket/socket';
 import { useAppStore } from '../store/appStore';
 
 const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const { currentUser } = useAppStore();
-  const [chats, setChats] = useState(chatsData);
+  const [chats, setChats] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [messages, setMessages] = useState({});
   const messagesEndRef = useRef(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [lightboxUrl, setLightboxUrl] = useState('');
 
-  // Initialize messages
+  const ourId = currentUser?.id || currentUser?._id;
+
+  // Fetch users on mount
   useEffect(() => {
-    const initialMessages = {};
-    chats.forEach(chat => {
-      initialMessages[chat.id] = messagesData[chat.id] || [];
-    });
-    setMessages(initialMessages);
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:5000/api/users', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const normalizedUsers = data.users.map(u => ({
+            id: u._id,
+            name: u.name,
+            username: u.username,
+            avatar: u.avatar || 'https://i.pravatar.cc/150?img=10',
+            isOnline: false,
+            lastMessage: 'Click to start chatting',
+            timestamp: '',
+            lastSeen: u.lastSeen
+          }));
+          setChats(normalizedUsers);
+        }
+      } catch (err) {
+        console.error('Fetch users failed:', err);
+      }
+    };
+
+    fetchUsers();
   }, []);
 
-  // Listen for receive_message
+  // Socket.io integration
   useEffect(() => {
-    const handleReceiveMessage = (data) => {
-      console.log('Message received:', data);
-      
-      const { senderId, receiverId, message, timestamp } = data || {};
-      
-      // Check if we are the intended receiver
-      if (Number(receiverId) !== Number(currentUser?.id)) {
-        return;
+    if (!currentUser || !ourId) return;
+
+    // Join socket room
+    socket.emit('join', ourId);
+
+    // Online Status handlers
+    const handleGetOnlineUsers = (users) => {
+      console.log('Online users array updated:', users);
+      setOnlineUsers(users);
+    };
+
+    const handleUserOnline = ({ userId }) => {
+      console.log('User came online:', userId);
+      setChats(prev => prev.map(c => c.id === userId ? { ...c, isOnline: true } : c));
+    };
+
+    const handleUserOffline = ({ userId, lastSeen }) => {
+      console.log('User went offline:', userId, lastSeen);
+      setChats(prev => prev.map(c => c.id === userId ? { ...c, isOnline: false, lastSeen } : c));
+    };
+
+    // Message status confirm handlers
+    const handleMessageStatusUpdated = ({ messageId, status }) => {
+      console.log('Message status updated via socket:', messageId, status);
+      if (selectedChat) {
+        setMessages(prev => {
+          const chatMsgs = prev[selectedChat.id] || [];
+          const updated = chatMsgs.map(msg => 
+            (msg.id === messageId || msg._id === messageId) ? { ...msg, status } : msg
+          );
+          return { ...prev, [selectedChat.id]: updated };
+        });
       }
+    };
+
+    const handleMessagesSeen = ({ senderId }) => {
+      console.log('Messages marked as seen by recipient:', senderId);
+      if (selectedChat && selectedChat.id === senderId) {
+        setMessages(prev => {
+          const chatMsgs = prev[selectedChat.id] || [];
+          const updated = chatMsgs.map(msg => 
+            msg.isOwn ? { ...msg, status: 'seen', read: true } : msg
+          );
+          return { ...prev, [selectedChat.id]: updated };
+        });
+      }
+    };
+
+    // Emoji reaction update handlers
+    const handleReactionAdded = ({ messageId, userId, emoji }) => {
+      console.log('Reaction added via socket:', messageId, userId, emoji);
+      if (selectedChat) {
+        setMessages(prev => {
+          const chatMsgs = prev[selectedChat.id] || [];
+          const updated = chatMsgs.map(msg => {
+            if (msg.id === messageId || msg._id === messageId) {
+              const reactions = [...(msg.reactions || [])];
+              const idx = reactions.findIndex(r => r.userId?.toString() === userId);
+              if (idx > -1) {
+                reactions[idx].emoji = emoji;
+              } else {
+                reactions.push({ userId, emoji });
+              }
+              return { ...msg, reactions };
+            }
+            return msg;
+          });
+          return { ...prev, [selectedChat.id]: updated };
+        });
+      }
+    };
+
+    const handleReactionRemoved = ({ messageId, userId }) => {
+      console.log('Reaction removed via socket:', messageId, userId);
+      if (selectedChat) {
+        setMessages(prev => {
+          const chatMsgs = prev[selectedChat.id] || [];
+          const updated = chatMsgs.map(msg => {
+            if (msg.id === messageId || msg._id === messageId) {
+              const reactions = (msg.reactions || []).filter(r => r.userId?.toString() !== userId);
+              return { ...msg, reactions };
+            }
+            return msg;
+          });
+          return { ...prev, [selectedChat.id]: updated };
+        });
+      }
+    };
+
+    const handleReactionUpdated = ({ messageId, reactions }) => {
+      console.log('Generic reaction update received:', messageId, reactions);
+      if (selectedChat) {
+        setMessages(prev => {
+          const chatMsgs = prev[selectedChat.id] || [];
+          const updated = chatMsgs.map(msg => 
+            (msg.id === messageId || msg._id === messageId) ? { ...msg, reactions } : msg
+          );
+          return { ...prev, [selectedChat.id]: updated };
+        });
+      }
+    };
+
+    // Receive message handler
+    const handleReceiveMessage = (data) => {
+      console.log('Real-time message received via socket:', data);
+      const { sender, receiver, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, status, reactions } = data || {};
       
-      const partnerId = Number(senderId);
-      
+      if (receiver !== ourId) return;
+
+      const partnerId = sender;
+
       const newIncomingMessage = {
-        id: Date.now() + Math.random(),
-        sender: chats.find(c => Number(c.id) === partnerId)?.name || 'Other',
-        content: message,
-        timestamp: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        id: _id || Date.now() + Math.random(),
+        _id: _id,
+        sender: 'Other',
+        content,
+        timestamp: new Date(createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         isOwn: false,
-        read: true,
-        avatar: chats.find(c => Number(c.id) === partnerId)?.avatar || ''
+        read: status === 'seen',
+        avatar: '',
+        messageType,
+        imageUrl,
+        fileUrl,
+        fileName,
+        fileSize,
+        status: status || 'delivered',
+        reactions: reactions || []
       };
 
-      setMessages(prev => ({
-        ...prev,
-        [partnerId]: [...(prev[partnerId] || []), newIncomingMessage]
-      }));
+      setMessages(prev => {
+        const chatMsgs = prev[partnerId] || [];
+        return {
+          ...prev,
+          [partnerId]: [...chatMsgs, newIncomingMessage]
+        };
+      });
+
+      // Mark seen immediately if active conversation panel is open
+      if (selectedChat && selectedChat.id === partnerId) {
+        const token = localStorage.getItem('token');
+        fetch(`http://localhost:5000/api/messages/seen/${partnerId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }).catch(err => console.error("Real-time seen update failed:", err));
+      }
+
+      // Update last message preview in sidebar
+      let previewText = "Sent an attachment";
+      if (messageType === 'text' || !messageType) {
+        previewText = content;
+      } else if (messageType === 'image') {
+        previewText = "📷 Image";
+      } else if (messageType === 'file') {
+        previewText = `📄 ${fileName || "Document"}`;
+      }
+
+      setChats(prevChats => prevChats.map(c => 
+        c.id === partnerId 
+          ? { ...c, lastMessage: previewText, timestamp: new Date(createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }
+          : c
+      ));
     };
 
-    socket.on('receive_message', handleReceiveMessage);
+    // Typing Event handlers
+    const handleTypingEvent = ({ senderId }) => {
+      if (selectedChat && selectedChat.id === senderId) {
+        setIsTyping(true);
+      }
+    };
+
+    const handleStopTypingEvent = ({ senderId }) => {
+      if (selectedChat && selectedChat.id === senderId) {
+        setIsTyping(false);
+      }
+    };
+
+    // Socket registers
+    socket.on('getOnlineUsers', handleGetOnlineUsers);
+    socket.on('userOnline', handleUserOnline);
+    socket.on('userOffline', handleUserOffline);
+    socket.on('receiveMessage', handleReceiveMessage);
+    socket.on('messageStatusUpdated', handleMessageStatusUpdated);
+    socket.on('messageDelivered', handleMessageStatusUpdated);
+    socket.on('messagesSeen', handleMessagesSeen);
+    socket.on('messageSeen', handleMessagesSeen);
+    socket.on('reactionAdded', handleReactionAdded);
+    socket.on('reactionRemoved', handleReactionRemoved);
+    socket.on('reactionUpdated', handleReactionUpdated);
+    socket.on('typing', handleTypingEvent);
+    socket.on('stopTyping', handleStopTypingEvent);
 
     return () => {
-      socket.off('receive_message', handleReceiveMessage);
+      socket.off('getOnlineUsers', handleGetOnlineUsers);
+      socket.off('userOnline', handleUserOnline);
+      socket.off('userOffline', handleUserOffline);
+      socket.off('receiveMessage', handleReceiveMessage);
+      socket.off('messageStatusUpdated', handleMessageStatusUpdated);
+      socket.off('messageDelivered', handleMessageStatusUpdated);
+      socket.off('messagesSeen', handleMessagesSeen);
+      socket.off('messageSeen', handleMessagesSeen);
+      socket.off('reactionAdded', handleReactionAdded);
+      socket.off('reactionRemoved', handleReactionRemoved);
+      socket.off('reactionUpdated', handleReactionUpdated);
+      socket.off('typing', handleTypingEvent);
+      socket.off('stopTyping', handleStopTypingEvent);
     };
-  }, [currentUser, chats]);
+  }, [currentUser, ourId, selectedChat]);
+
+  // Fetch conversation history and trigger 'seen' status update when selectedChat changes
+  useEffect(() => {
+    if (!selectedChat) return;
+
+    const fetchHistory = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`http://localhost:5000/api/messages/${selectedChat.id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const normalizedMessages = data.messages.map(msg => ({
+            id: msg._id,
+            _id: msg._id,
+            sender: msg.sender === ourId ? 'You' : selectedChat.name,
+            content: msg.content,
+            timestamp: new Date(msg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            isOwn: msg.sender === ourId,
+            read: msg.status === 'seen',
+            avatar: msg.sender === ourId ? currentUser?.avatar : selectedChat.avatar,
+            messageType: msg.messageType,
+            imageUrl: msg.imageUrl,
+            fileUrl: msg.fileUrl,
+            fileName: msg.fileName,
+            fileSize: msg.fileSize,
+            status: msg.status,
+            reactions: msg.reactions || []
+          }));
+
+          setMessages(prev => ({
+            ...prev,
+            [selectedChat.id]: normalizedMessages
+          }));
+
+          // Mark incoming unread conversation logs as seen
+          fetch(`http://localhost:5000/api/messages/seen/${selectedChat.id}`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }).catch(err => console.error("Seen updates sync failed:", err));
+        }
+      } catch (err) {
+        console.error('Fetch conversation history failed:', err);
+      }
+    };
+
+    fetchHistory();
+  }, [selectedChat, currentUser, ourId]);
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
@@ -78,40 +331,176 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     scrollToBottom();
   }, [messages, selectedChat]);
 
-  const handleSendMessage = (content) => {
+  // Reset typing state on panel transition
+  useEffect(() => {
+    setIsTyping(false);
+  }, [selectedChat]);
+
+  const handleTyping = () => {
+    if (!selectedChat || !ourId) return;
+    socket.emit('typing', { senderId: ourId, receiverId: selectedChat.id });
+  };
+
+  const handleStopTyping = () => {
+    if (!selectedChat || !ourId) return;
+    socket.emit('stopTyping', { senderId: ourId, receiverId: selectedChat.id });
+  };
+
+  // Toggle emoji reactions
+  const handleReact = async (messageId, emoji) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`http://localhost:5000/api/messages/${messageId}/react`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ emoji })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (selectedChat) {
+          setMessages(prev => {
+            const chatMsgs = prev[selectedChat.id] || [];
+            const updated = chatMsgs.map(msg => 
+              (msg.id === messageId || msg._id === messageId) ? { ...msg, reactions: data.reactions } : msg
+            );
+            return { ...prev, [selectedChat.id]: updated };
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Toggle reaction failed:', err);
+    }
+  };
+
+  const handleSendMessage = async (content, attachment = null) => {
     if (!selectedChat) return;
 
-    const timestamp = new Date().toISOString();
-    const payload = {
-      senderId: currentUser?.id,
-      receiverId: selectedChat.id,
-      message: content,
-      timestamp
-    };
+    try {
+      const token = localStorage.getItem('token');
+      const messageBody = {
+        receiverId: selectedChat.id,
+        content: content || ""
+      };
 
-    // Emit "send_message" when Send is clicked
-    socket.emit('send_message', payload);
-    console.log('Emitted send_message:', payload);
+      if (attachment) {
+        messageBody.messageType = attachment.type;
+        messageBody.imageUrl = attachment.type === 'image' ? attachment.url : '';
+        messageBody.fileUrl = attachment.type === 'file' ? attachment.url : '';
+        messageBody.fileName = attachment.name;
+        messageBody.fileSize = attachment.size;
+      }
 
-    const newMessage = {
-      id: Date.now() + Math.random(),
-      sender: 'You',
-      content,
-      timestamp: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      isOwn: true,
-      read: false
-    };
+      const res = await fetch('http://localhost:5000/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(messageBody)
+      });
 
-    setMessages(prev => ({
-      ...prev,
-      [selectedChat.id]: [...(prev[selectedChat.id] || []), newMessage]
-    }));
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const savedMsg = data.message;
+
+        // Broadcast via Socket.io
+        const socketPayload = {
+          _id: savedMsg._id,
+          senderId: ourId,
+          receiverId: selectedChat.id,
+          content: savedMsg.content,
+          messageType: savedMsg.messageType,
+          imageUrl: savedMsg.imageUrl,
+          fileUrl: savedMsg.fileUrl,
+          fileName: savedMsg.fileName,
+          fileSize: savedMsg.fileSize,
+          createdAt: savedMsg.createdAt
+        };
+        socket.emit('sendMessage', socketPayload);
+
+        // Append locally in history log
+        const localMsg = {
+          id: savedMsg._id,
+          _id: savedMsg._id,
+          sender: 'You',
+          content: savedMsg.content,
+          timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          isOwn: true,
+          read: savedMsg.status === 'seen',
+          avatar: currentUser?.avatar,
+          messageType: savedMsg.messageType,
+          imageUrl: savedMsg.imageUrl,
+          fileUrl: savedMsg.fileUrl,
+          fileName: savedMsg.fileName,
+          fileSize: savedMsg.fileSize,
+          status: savedMsg.status,
+          reactions: []
+        };
+
+        setMessages(prev => ({
+          ...prev,
+          [selectedChat.id]: [...(prev[selectedChat.id] || []), localMsg]
+        }));
+
+        // Format sidebar message preview
+        let previewText = "Sent an attachment";
+        if (savedMsg.messageType === 'text' || !savedMsg.messageType) {
+          previewText = content;
+        } else if (savedMsg.messageType === 'image') {
+          previewText = "📷 Image";
+        } else if (savedMsg.messageType === 'file') {
+          previewText = `📄 ${savedMsg.fileName || "Document"}`;
+        }
+
+        setChats(prevChats => prevChats.map(c => 
+          c.id === selectedChat.id 
+            ? { ...c, lastMessage: previewText, timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }
+            : c
+        ));
+      }
+    } catch (err) {
+      console.error('Send message failed:', err);
+    }
   };
+
+  // Map online statuses dynamically
+  const chatsWithOnlineStatus = chats.map(chat => ({
+    ...chat,
+    isOnline: onlineUsers.includes(chat.id)
+  }));
 
   const currentMessages = selectedChat ? (messages[selectedChat.id] || []) : [];
 
   return (
     <div className={`h-screen flex bg-white dark:bg-darkBg overflow-hidden ${darkMode ? 'dark' : ''}`}>
+      {/* Photo Lightbox Dialog */}
+      <AnimatePresence>
+        {lightboxUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setLightboxUrl('')}
+            className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-4 cursor-zoom-out"
+          >
+            <button
+              onClick={() => setLightboxUrl('')}
+              className="absolute top-4 right-4 text-white hover:text-gray-300 p-2 rounded-full hover:bg-white/10 transition-colors"
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Enlarged media"
+              className="max-w-full max-h-[85vh] rounded-2xl object-contain shadow-2xl"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Mobile Menu Toggle */}
       <div className="md:hidden fixed top-0 left-0 right-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 z-50 flex items-center justify-between h-16">
         <h2 className="font-bold text-lg text-gray-900 dark:text-white">
@@ -143,7 +532,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       {/* Sidebar */}
       <div className={`${isMobileSidebarOpen ? 'block' : 'hidden'} md:flex md:flex-col w-full md:w-80 bg-white dark:bg-gray-800`}>
         <Sidebar
-          chats={chats}
+          chats={chatsWithOnlineStatus}
           activeChat={selectedChat}
           onSelectChat={setSelectedChat}
           onNavigate={onNavigate}
@@ -168,7 +557,12 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             >
               {/* Chat Header */}
               <ChatHeader
-                chat={selectedChat}
+                chat={{ 
+                  ...selectedChat, 
+                  isOnline: onlineUsers.includes(selectedChat.id),
+                  lastSeen: chats.find(c => c.id === selectedChat.id)?.lastSeen
+                }}
+                isTyping={isTyping}
                 onClose={() => setSelectedChat(null)}
                 onOpenProfile={() => setShowProfileModal(true)}
               />
@@ -201,9 +595,12 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
                       {currentMessages.map((msg, index) => (
                         <MessageBubble
-                          key={msg.id}
+                          key={msg.id || index}
                           message={msg}
                           isOwnMessage={msg.isOwn}
+                          onReact={handleReact}
+                          onImageClick={setLightboxUrl}
+                          currentUserId={ourId}
                         />
                       ))}
 
@@ -231,7 +628,11 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
               </motion.div>
 
               {/* Message Input */}
-              <MessageInput onSendMessage={handleSendMessage} />
+              <MessageInput
+                onSendMessage={handleSendMessage}
+                onTyping={handleTyping}
+                onStopTyping={handleStopTyping}
+              />
             </motion.div>
           ) : (
             <EmptyChat />
@@ -243,7 +644,11 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       <AnimatePresence>
         {showProfileModal && (
           <ProfileModal
-            chat={selectedChat}
+            chat={{
+              ...selectedChat,
+              isOnline: onlineUsers.includes(selectedChat.id),
+              lastSeen: chats.find(c => c.id === selectedChat.id)?.lastSeen
+            }}
             onClose={() => setShowProfileModal(false)}
           />
         )}

@@ -6,6 +6,8 @@ const path = require('path');
 const fs = require('fs');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const messageRoutes = require('./routes/messageRoutes');
 const { initSocket } = require('./socket/socket');
 
 // Load environment variables
@@ -38,6 +40,8 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Test Route
 app.get('/', (req, res) => {

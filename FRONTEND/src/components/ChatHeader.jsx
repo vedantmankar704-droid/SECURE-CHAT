@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion';
 import { MoreVertical, Search, X } from 'lucide-react';
 import { useState } from 'react';
+import TypingIndicator from './TypingIndicator';
 
-const ChatHeader = ({ chat, onClose, onOpenProfile }) => {
+const ChatHeader = ({ chat, isTyping, onClose, onOpenProfile }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
@@ -41,9 +42,40 @@ const ChatHeader = ({ chat, onClose, onOpenProfile }) => {
             <h2 className="font-bold text-gray-900 dark:text-white">
               {chat.name}
             </h2>
-            <p className="text-xs text-gray-600 dark:text-gray-400">
-              {chat.isOnline ? 'Online' : 'Offline'}
-            </p>
+            {isTyping ? (
+              <div className="flex items-center gap-1 mt-1">
+                <TypingIndicator />
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {chat.isOnline ? 'Online' : (() => {
+                  if (!chat.lastSeen) return 'Offline';
+                  try {
+                    const date = new Date(chat.lastSeen);
+                    if (isNaN(date.getTime())) return 'Offline';
+                    const now = new Date();
+                    
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    const yesterday = new Date(today);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    
+                    const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                    const timeString = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    
+                    if (compareDate.getTime() === today.getTime()) {
+                      return `last seen today at ${timeString}`;
+                    } else if (compareDate.getTime() === yesterday.getTime()) {
+                      return `last seen yesterday at ${timeString}`;
+                    } else {
+                      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      return `last seen on ${dateStr} at ${timeString}`;
+                    }
+                  } catch (e) {
+                    return 'Offline';
+                  }
+                })()}
+              </p>
+            )}
           </div>
         </div>
       </div>

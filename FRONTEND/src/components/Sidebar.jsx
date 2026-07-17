@@ -115,69 +115,6 @@ const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onTogg
           onChange={(e) => setSearchQuery(e.target.value)}
         />
 
-        {/* User Identity Switcher (for testing Socket.IO) */}
-        <div className="mt-3 p-3 bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/30 rounded-2xl flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-indigo-500 dark:text-indigo-400">
-              Active Identity (Testing)
-            </span>
-            <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-bold">
-              ID: {currentUser?.id || 10}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <img
-              src={currentUser?.avatar || 'https://i.pravatar.cc/150?img=10'}
-              alt={currentUser?.name || 'You'}
-              className="w-8 h-8 rounded-full ring-2 ring-indigo-200 dark:ring-indigo-800 object-cover"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
-                {currentUser?.name || 'You'}
-              </p>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                {currentUser?.email || 'user@example.com'}
-              </p>
-            </div>
-            <select
-              value={currentUser?.id || 10}
-              onChange={(e) => {
-                const uId = Number(e.target.value);
-                const chatUser = chats.find(c => c.id === uId);
-                if (chatUser) {
-                  updateCurrentUser({
-                    id: chatUser.id,
-                    name: chatUser.name,
-                    avatar: chatUser.avatar,
-                    email: `${chatUser.name.toLowerCase().replace(/\s+/g, '')}@example.com`,
-                    phone: `+1 (555) 000-000${chatUser.id}`,
-                    status: 'Online',
-                    bio: `Hello! I am ${chatUser.name}. 👋`
-                  });
-                } else if (uId === 10) {
-                  updateCurrentUser({
-                    id: 10,
-                    name: 'You',
-                    avatar: 'https://i.pravatar.cc/150?img=10',
-                    email: 'user@example.com',
-                    phone: '+1 (555) 000-0001',
-                    status: 'Online',
-                    bio: 'Hello there! 👋'
-                  });
-                }
-              }}
-              className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 outline-none text-gray-700 dark:text-gray-200 cursor-pointer shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            >
-              <option value={10}>Default (You - ID 10)</option>
-              {chats.map(chat => (
-                <option key={chat.id} value={chat.id}>
-                  {chat.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
         {/* Tabs */}
         <div className="flex gap-2 mt-3">
           <button className="px-3 py-1 bg-primary text-white text-sm rounded-full">

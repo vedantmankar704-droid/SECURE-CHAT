@@ -1,10 +1,22 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 
-// Configure disk storage
+// Configure disk storage with dynamic destination mapping
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    let dest = 'uploads/';
+    if (file.mimetype.startsWith('image/')) {
+      dest = 'uploads/chat-images/';
+    } else {
+      dest = 'uploads/chat-files/';
+    }
+    
+    // Ensure the folder exists
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true });
+    }
+    cb(null, dest);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
@@ -12,20 +24,26 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter (restrict to images only)
+// File filter supporting standard images and common document file formats
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+  const allowedMimeTypes = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/jpg',
+    'application/pdf', 'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain'
+  ];
+
+  if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed!'), false);
+    cb(new Error('Unsupported file format! Only images (.jpg, .jpeg, .png, .webp) and documents (.pdf, .doc, .docx, .txt) are supported.'), false);
   }
 };
 
-// Multer configuration
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 10 * 1024 * 1024 // 10MB size limit
   },
   fileFilter: fileFilter
 });

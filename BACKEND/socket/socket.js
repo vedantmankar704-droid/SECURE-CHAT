@@ -1,7 +1,9 @@
 const { Server } = require('socket.io');
+const Message = require('../models/Message');
+const User = require('../models/User');
 
 let io;
-const userSocketMap = {}; // in-memory Map to store userId -> socketId mapping
+const userSocketMap = {}; // userId -> socketId in-memory Map
 
 const getReceiverSocketId = (userId) => {
   return userSocketMap[userId] || null;
@@ -19,9 +21,9 @@ const initSocket = (server) => {
     console.log(`User Connected: ${socket.id}`);
 
     // Listen for join event from clients
-    socket.on('join', (userId) => {
+    socket.on('join', async (userId) => {
       if (userId) {
-        // Clean up any old mapping for this socket to prevent stale routing
+        // Clean up old socket associations
         for (const [key, val] of Object.entries(userSocketMap)) {
           if (val === socket.id) {
             delete userSocketMap[key];
@@ -29,47 +31,129 @@ const initSocket = (server) => {
         }
         userSocketMap[userId] = socket.id;
         console.log(`User Joined: ${userId}`);
+        
+        // Broadcast online users and userOnline event
+        io.emit('getOnlineUsers', Object.keys(userSocketMap));
+        socket.broadcast.emit('userOnline', { userId });
+
+        // Update any pending 'sent' messages to 'delivered'
+        try {
+          const undelivered = await Message.find({ receiver: userId, status: 'sent' });
+          if (undelivered.length > 0) {
+            await Message.updateMany(
+              { receiver: userId, status: 'sent' },
+              { status: 'delivered' }
+            );
+
+            // Notify each sender
+            undelivered.forEach(msg => {
+              const senderSocketId = getReceiverSocketId(msg.sender.toString());
+              if (senderSocketId) {
+                io.to(senderSocketId).emit('messageDelivered', {
+                  messageId: msg._id,
+                  receiverId: userId
+                });
+                io.to(senderSocketId).emit('messageStatusUpdated', {
+                  messageId: msg._id,
+                  status: 'delivered'
+                });
+              }
+            });
+          }
+        } catch (err) {
+          console.error("Error updating message status on join:", err);
+        }
       }
     });
 
-    // Listen for send_message event from clients
-    socket.on('send_message', (payload) => {
-      const { senderId, receiverId, message, timestamp } = payload || {};
+    // Listen for sendMessage event from clients (camelCase)
+    socket.on('sendMessage', (payload) => {
+      const { senderId, receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt } = payload || {};
 
-      console.log(`Message received: ${message}`);
+      console.log(`[Socket] Message received: ${content || '[Attachment]'}`);
       console.log(`Sender ID: ${senderId}`);
       console.log(`Receiver ID: ${receiverId}`);
 
-      // Validate payload
-      if (!senderId || !receiverId || !message) {
-        console.log('Validation failed: Missing senderId, receiverId, or message');
+      if (!senderId || !receiverId) {
+        console.log('Validation failed: Missing senderId or receiverId');
         return;
       }
 
       const receiverSocketId = getReceiverSocketId(receiverId);
+      const deliveryStatus = receiverSocketId ? 'delivered' : 'sent';
+
+      const outgoingPayload = {
+        _id,
+        sender: senderId,
+        receiver: receiverId,
+        content: content || "",
+        messageType: messageType || "text",
+        imageUrl: imageUrl || "",
+        fileUrl: fileUrl || "",
+        fileName: fileName || "",
+        fileSize: fileSize || 0,
+        createdAt: createdAt || new Date().toISOString(),
+        status: deliveryStatus,
+        reactions: []
+      };
+
       if (receiverSocketId) {
-        io.to(receiverSocketId).emit('receive_message', {
-          senderId,
-          receiverId,
-          message,
-          timestamp: timestamp || new Date().toISOString()
+        io.to(receiverSocketId).emit('receiveMessage', outgoingPayload);
+        
+        // Notify the sender that it was delivered
+        io.to(socket.id).emit('messageStatusUpdated', {
+          messageId: _id,
+          status: 'delivered'
         });
-        console.log('Message delivered');
-      } else {
-        console.log('Message delivered (receiver offline)');
+        io.to(socket.id).emit('messageDelivered', {
+          messageId: _id,
+          receiverId
+        });
+      }
+    });
+
+    // Listen for typing events
+    socket.on('typing', ({ senderId, receiverId }) => {
+      const receiverSocketId = getReceiverSocketId(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('typing', { senderId });
+      }
+    });
+
+    // Listen for stopTyping events
+    socket.on('stopTyping', ({ senderId, receiverId }) => {
+      const receiverSocketId = getReceiverSocketId(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('stopTyping', { senderId });
       }
     });
 
     // Handle disconnection
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`User Disconnected: ${socket.id}`);
 
       // Find and remove user from the online map
+      let disconnectedUserId = null;
       for (const [userId, socketId] of Object.entries(userSocketMap)) {
         if (socketId === socket.id) {
+          disconnectedUserId = userId;
           delete userSocketMap[userId];
           console.log(`User Disconnected: ${userId}`);
           break;
+        }
+      }
+
+      if (disconnectedUserId) {
+        try {
+          const lastSeenDate = new Date();
+          // Update MongoDB record
+          await User.findByIdAndUpdate(disconnectedUserId, { lastSeen: lastSeenDate });
+          
+          // Broadcast updated online list and userOffline status
+          io.emit('getOnlineUsers', Object.keys(userSocketMap));
+          socket.broadcast.emit('userOffline', { userId: disconnectedUserId, lastSeen: lastSeenDate });
+        } catch (err) {
+          console.error("Error updating lastSeen on disconnect:", err);
         }
       }
     });
