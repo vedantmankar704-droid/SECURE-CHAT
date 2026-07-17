@@ -11,46 +11,27 @@ import socket from './socket/socket';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
-  const { currentPage, navigateTo, darkMode, toggleDarkMode, currentUser, updateCurrentUser } = useAppStore();
+  const { currentPage, navigateTo, darkMode, toggleDarkMode, currentUser, updateCurrentUser, fetchCurrentUser } = useAppStore();
   const [authLoading, setAuthLoading] = useState(true);
 
   // Check auth session on application startup
   useEffect(() => {
     const checkAuthSession = async () => {
       const token = localStorage.getItem('token');
-      const user = localStorage.getItem('user');
 
-      if (token && user) {
+      if (token) {
         try {
-          const res = await fetch('http://localhost:5000/api/auth/profile', {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.user) {
-              const normalizedUser = {
-                ...data.user,
-                id: data.user._id || data.user.id
-              };
-              updateCurrentUser(normalizedUser);
-              // Only redirect to dashboard if they are on welcome/login/register
-              if (['welcome', 'login', 'register'].includes(currentPage)) {
-                navigateTo('dashboard');
-              }
-            } else {
-              throw new Error('Session profile invalid');
+          const user = await fetchCurrentUser();
+          if (user) {
+            // Only redirect to dashboard if they are on welcome/login/register
+            if (['welcome', 'login', 'register'].includes(currentPage)) {
+              navigateTo('dashboard');
             }
           } else {
-            throw new Error('Token verification failed');
+            navigateTo('welcome');
           }
         } catch (err) {
-          console.error('Startup auth check failed, clearing storage:', err);
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          updateCurrentUser(null);
+          console.error('Startup auth check failed:', err);
           navigateTo('welcome');
         }
       } else {

@@ -29,6 +29,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  bio: {
+    type: String,
+    default: ""
+  },
+  phone: {
+    type: String,
+    default: ""
+  },
   isOnline: {
     type: Boolean,
     default: false

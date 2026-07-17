@@ -146,6 +146,8 @@ const getProfile = async (req, res) => {
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        bio: user.bio || "",
+        phone: user.phone || "",
         isOnline: user.isOnline,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
@@ -160,8 +162,140 @@ const getProfile = async (req, res) => {
   }
 };
 
+// @desc    Get current logged-in user
+// @route   GET /api/auth/me
+// @access  Private
+const getCurrentUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.user).select('-password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.status(200).json({
+      _id: user._id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      avatar: user.avatar,
+      bio: user.bio || "",
+      phone: user.phone || "",
+      isOnline: user.isOnline,
+      lastSeen: user.lastSeen
+    });
+  } catch (error) {
+    console.error(`Get current user error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
+// @desc    Upload profile picture (avatar)
+// @route   POST /api/auth/upload-avatar
+// @access  Private
+const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Please upload an image file"
+      });
+    }
+
+    // Construct the public URL of the uploaded image
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+    // Update user document in MongoDB
+    const user = await User.findByIdAndUpdate(
+      req.user,
+      { avatar: fileUrl },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile picture uploaded successfully",
+      avatar: fileUrl,
+      user
+    });
+  } catch (error) {
+    console.error(`Upload avatar error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = async (req, res) => {
+  try {
+    const { name, bio, phone } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required"
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user,
+      { name, bio, phone },
+      { new: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        username: updatedUser.username,
+        email: updatedUser.email,
+        avatar: updatedUser.avatar,
+        bio: updatedUser.bio || "",
+        phone: updatedUser.phone || "",
+        isOnline: updatedUser.isOnline,
+        lastSeen: updatedUser.lastSeen
+      }
+    });
+  } catch (error) {
+    console.error(`Update profile error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
-  getProfile
+  getProfile,
+  getCurrentUser,
+  uploadAvatar,
+  updateProfile
 };
+

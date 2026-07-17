@@ -3,17 +3,46 @@ import { create } from 'zustand';
 export const useAppStore = create((set) => ({
   currentPage: 'welcome',
   darkMode: false,
-  currentUser: {
-    id: 1,
-    name: 'You',
-    avatar: 'https://i.pravatar.cc/150?img=10',
-    email: 'user@example.com',
-    phone: '+1 (555) 000-0001',
-    status: 'Online',
-    bio: 'Hello there! 👋'
-  },
+  currentUser: null,
 
   navigateTo: (page) => set({ currentPage: page }),
   toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
-  updateCurrentUser: (user) => set({ currentUser: user })
+  updateCurrentUser: (user) => set({ currentUser: user }),
+
+  fetchCurrentUser: async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      set({ currentUser: null });
+      return null;
+    }
+
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (res.ok) {
+        const user = await res.json();
+        const normalizedUser = {
+          ...user,
+          id: user._id || user.id
+        };
+        set({ currentUser: normalizedUser });
+        localStorage.setItem('user', JSON.stringify(normalizedUser));
+        return normalizedUser;
+      } else {
+        // Clear invalid token session
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        set({ currentUser: null });
+        return null;
+      }
+    } catch (err) {
+      console.error('Fetch current user error:', err);
+      return null;
+    }
+  }
 }));
+

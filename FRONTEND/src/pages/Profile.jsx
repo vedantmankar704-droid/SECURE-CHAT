@@ -1,19 +1,133 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Camera, Mail, Phone, MapPin, Edit2, Save } from 'lucide-react';
+import { ArrowLeft, Camera, Mail, Phone, MapPin, Edit2, Save, Loader2 } from 'lucide-react';
+import { useAppStore } from '../store/appStore';
 
-const Profile = ({ onNavigate, currentUser }) => {
+const Profile = ({ onNavigate }) => {
+  const { currentUser, updateCurrentUser } = useAppStore();
   const [isEditing, setIsEditing] = useState(false);
   const [userData, setUserData] = useState(currentUser || {});
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const fileInputRef = useRef(null);
 
-  const handleSave = () => {
-    setIsEditing(false);
+  // Sync userData state when currentUser updates
+  useEffect(() => {
+    if (currentUser) {
+      setUserData(currentUser);
+    }
+  }, [currentUser]);
+
+  const handleSave = async () => {
+    setError('');
+    setSuccess('');
+    setSaveLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: userData.name,
+          bio: userData.bio,
+          phone: userData.phone
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const updatedUser = {
+          ...currentUser,
+          name: data.user.name,
+          bio: data.user.bio,
+          phone: data.user.phone
+        };
+        // Update local storage and global store state
+        updateCurrentUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        
+        setSuccess('Profile updated successfully!');
+        setIsEditing(false);
+      } else {
+        setError(data.message || 'Failed to update profile.');
+      }
+    } catch (err) {
+      console.error('Save profile error:', err);
+      setError('Connection to backend failed. Please try again.');
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setUserData(prev => ({ ...prev, [name]: value }));
   };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate size and file type
+    if (!file.type.startsWith('image/')) {
+      setError('Only image files are allowed');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size must be less than 5MB');
+      return;
+    }
+
+    setUploading(true);
+    setError('');
+
+    // Instant local preview
+    const previewUrl = URL.createObjectURL(file);
+    setUserData(prev => ({ ...prev, avatar: previewUrl }));
+
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/auth/upload-avatar', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const updatedUser = {
+          ...currentUser,
+          avatar: data.avatar
+        };
+        setUserData(prev => ({ ...prev, avatar: data.avatar }));
+        updateCurrentUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      } else {
+        setError(data.message || 'Failed to upload profile picture.');
+        setUserData(prev => ({ ...prev, avatar: currentUser?.avatar }));
+      }
+    } catch (err) {
+      console.error('File upload error:', err);
+      setError('Failed to connect to backend upload service.');
+      setUserData(prev => ({ ...prev, avatar: currentUser?.avatar }));
+    } finally {
+      setUploading(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-white dark:bg-darkBg">
@@ -48,10 +162,25 @@ const Profile = ({ onNavigate, currentUser }) => {
               <img
                 src={userData.avatar || 'https://i.pravatar.cc/150?img=10'}
                 alt="Profile"
-                className="w-24 h-24 rounded-full object-cover border-4 border-primary"
+                className={`w-24 h-24 rounded-full object-cover border-4 border-primary transition-all duration-300 ${uploading ? 'opacity-70 blur-[1px]' : ''}`}
               />
-              <button className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full hover:bg-blue-600 transition-colors">
-                <Camera size={16} />
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="image/*"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full hover:bg-blue-600 transition-colors shadow-lg disabled:opacity-80"
+              >
+                {uploading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Camera size={16} />
+                )}
               </button>
             </div>
             <div>
@@ -59,9 +188,24 @@ const Profile = ({ onNavigate, currentUser }) => {
                 {userData.name}
               </h2>
               <p className="text-gray-600 dark:text-gray-400 text-sm">Your Account</p>
+              {error && (
+                <p className="text-xs text-red-500 font-semibold mt-2 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 px-3 py-1 rounded-lg">
+                  {error}
+                </p>
+              )}
             </div>
           </div>
         </div>
+
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 p-3.5 rounded-xl text-sm mb-6 flex items-center gap-2"
+          >
+            <span className="font-semibold">Success:</span> {success}
+          </motion.div>
+        )}
 
         {/* Account Information */}
         <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-8 mb-6">
@@ -72,14 +216,22 @@ const Profile = ({ onNavigate, currentUser }) => {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setIsEditing(!isEditing)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+              onClick={isEditing ? handleSave : () => setIsEditing(true)}
+              disabled={saveLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-80"
             >
               {isEditing ? (
-                <>
-                  <Save size={16} />
-                  Save Changes
-                </>
+                saveLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Save Changes
+                  </>
+                )
               ) : (
                 <>
                   <Edit2 size={16} />
