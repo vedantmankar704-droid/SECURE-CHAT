@@ -1,0 +1,91 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+* {
+  transition-property: background-color, border-color;
+  transition-duration: 200ms;
+}
+
+body {
+  background-color: white;
+  color: #111827;
+}
+
+.dark body {
+  background-color: #0a0e27;
+  color: white;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #9ca3af;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280;
+}
+
+/* Animations */
+@keyframes typing {
+  0%, 60%, 100% {
+    opacity: 0.5;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: typing 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Message bubbles */
+.message-bubble {
+  max-width: 20rem;
+  padding: 0.5rem 1rem;
+  border-radius: 1rem;
+}
+
+.message-bubble.outgoing {
+  background-color: #0084ff;
+  color: white;
+  border-radius: 1.5rem;
+  border-top-right-radius: 0;
+}
+
+.message-bubble.incoming {
+  background-color: #f3f4f6;
+  color: #111827;
+  border-radius: 1.5rem;
+  border-top-left-radius: 0;
+}
+
+.dark .message-bubble.incoming {
+  background-color: #374151;
+  color: white;
+}

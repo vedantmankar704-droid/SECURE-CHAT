@@ -1,0 +1,21 @@
+# Dependency directories
+node_modules/
+
+# Env / Secrets
+.env
+.env.local
+.env.production
+.env.development
+.env.staging
+
+# Build directories
+dist/
+build/
+out/
+
+# Coverage
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
