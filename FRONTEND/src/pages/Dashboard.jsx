@@ -10,14 +10,18 @@ import EmptyChat from '../components/EmptyChat';
 import ProfileModal from '../components/ProfileModal';
 import TypingIndicator from '../components/TypingIndicator';
 import { Menu, X } from 'lucide-react';
+import socket from '../socket/socket';
+import { useAppStore } from '../store/appStore';
 
 const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
+  const { currentUser } = useAppStore();
   const [chats, setChats] = useState(chatsData);
   const [selectedChat, setSelectedChat] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [messages, setMessages] = useState({});
   const messagesEndRef = useRef(null);
+  const [isTyping, setIsTyping] = useState(false);
 
   // Initialize messages
   useEffect(() => {
@@ -27,6 +31,43 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     });
     setMessages(initialMessages);
   }, []);
+
+  // Listen for receive_message
+  useEffect(() => {
+    const handleReceiveMessage = (data) => {
+      console.log('Message received:', data);
+      
+      const { senderId, receiverId, message, timestamp } = data || {};
+      
+      // Check if we are the intended receiver
+      if (Number(receiverId) !== Number(currentUser?.id)) {
+        return;
+      }
+      
+      const partnerId = Number(senderId);
+      
+      const newIncomingMessage = {
+        id: Date.now() + Math.random(),
+        sender: chats.find(c => Number(c.id) === partnerId)?.name || 'Other',
+        content: message,
+        timestamp: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+        isOwn: false,
+        read: true,
+        avatar: chats.find(c => Number(c.id) === partnerId)?.avatar || ''
+      };
+
+      setMessages(prev => ({
+        ...prev,
+        [partnerId]: [...(prev[partnerId] || []), newIncomingMessage]
+      }));
+    };
+
+    socket.on('receive_message', handleReceiveMessage);
+
+    return () => {
+      socket.off('receive_message', handleReceiveMessage);
+    };
+  }, [currentUser, chats]);
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
@@ -40,11 +81,23 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const handleSendMessage = (content) => {
     if (!selectedChat) return;
 
+    const timestamp = new Date().toISOString();
+    const payload = {
+      senderId: currentUser?.id,
+      receiverId: selectedChat.id,
+      message: content,
+      timestamp
+    };
+
+    // Emit "send_message" when Send is clicked
+    socket.emit('send_message', payload);
+    console.log('Emitted send_message:', payload);
+
     const newMessage = {
-      id: (messages[selectedChat.id]?.length || 0) + 1,
+      id: Date.now() + Math.random(),
       sender: 'You',
       content,
-      timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       isOwn: true,
       read: false
     };
@@ -53,24 +106,6 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       ...prev,
       [selectedChat.id]: [...(prev[selectedChat.id] || []), newMessage]
     }));
-
-    // Simulate typing indicator and response
-    setTimeout(() => {
-      const responseMessage = {
-        id: (messages[selectedChat.id]?.length || 0) + 2,
-        sender: selectedChat.name,
-        content: 'Thanks for the message! 😊',
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        isOwn: false,
-        read: true,
-        avatar: selectedChat.avatar
-      };
-
-      setMessages(prev => ({
-        ...prev,
-        [selectedChat.id]: [...prev[selectedChat.id], responseMessage]
-      }));
-    }, 1500);
   };
 
   const currentMessages = selectedChat ? (messages[selectedChat.id] || []) : [];
@@ -173,20 +208,22 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                       ))}
 
                       {/* Typing Indicator */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex gap-2"
-                      >
-                        <img
-                          src={selectedChat.avatar}
-                          alt="Avatar"
-                          className="w-8 h-8 rounded-full object-cover"
-                        />
-                        <div className="bg-gray-200 dark:bg-gray-700 rounded-3xl rounded-tl-none px-4 py-3">
-                          <TypingIndicator />
-                        </div>
-                      </motion.div>
+                      {isTyping && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="flex gap-2"
+                        >
+                          <img
+                            src={selectedChat.avatar}
+                            alt="Avatar"
+                            className="w-8 h-8 rounded-full object-cover"
+                          />
+                          <div className="bg-gray-200 dark:bg-gray-700 rounded-3xl rounded-tl-none px-4 py-3">
+                            <TypingIndicator />
+                          </div>
+                        </motion.div>
+                      )}
                     </>
                   )}
                   <div ref={messagesEndRef} />

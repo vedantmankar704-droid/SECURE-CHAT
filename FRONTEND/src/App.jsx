@@ -8,9 +8,62 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { useAppStore } from './store/appStore';
 import socket from './socket/socket';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
-  const { currentPage, navigateTo, darkMode, toggleDarkMode, currentUser } = useAppStore();
+  const { currentPage, navigateTo, darkMode, toggleDarkMode, currentUser, updateCurrentUser } = useAppStore();
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Check auth session on application startup
+  useEffect(() => {
+    const checkAuthSession = async () => {
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+
+      if (token && user) {
+        try {
+          const res = await fetch('http://localhost:5000/api/auth/profile', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.user) {
+              const normalizedUser = {
+                ...data.user,
+                id: data.user._id || data.user.id
+              };
+              updateCurrentUser(normalizedUser);
+              // Only redirect to dashboard if they are on welcome/login/register
+              if (['welcome', 'login', 'register'].includes(currentPage)) {
+                navigateTo('dashboard');
+              }
+            } else {
+              throw new Error('Session profile invalid');
+            }
+          } else {
+            throw new Error('Token verification failed');
+          }
+        } catch (err) {
+          console.error('Startup auth check failed, clearing storage:', err);
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          updateCurrentUser(null);
+          navigateTo('welcome');
+        }
+      } else {
+        // If not logged in and they attempt to access protected pages, redirect to welcome
+        if (!['welcome', 'login', 'register'].includes(currentPage)) {
+          navigateTo('welcome');
+        }
+      }
+      setAuthLoading(false);
+    };
+
+    checkAuthSession();
+  }, [navigateTo, updateCurrentUser]);
 
   useEffect(() => {
     const handleConnect = () => {
@@ -57,6 +110,15 @@ function App() {
     }
   }, [currentUser]);
 
+  if (authLoading) {
+    return (
+      <div className={`h-screen w-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-darkBg ${darkMode ? 'dark' : ''}`}>
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 text-sm font-medium text-gray-500 dark:text-gray-400">Verifying session...</p>
+      </div>
+    );
+  }
+
   const renderPage = () => {
     switch (currentPage) {
       case 'welcome':
@@ -67,16 +129,26 @@ function App() {
         return <Register onNavigate={navigateTo} />;
       case 'dashboard':
         return (
-          <Dashboard
-            onNavigate={navigateTo}
-            darkMode={darkMode}
-            onToggleDarkMode={toggleDarkMode}
-          />
+          <ProtectedRoute>
+            <Dashboard
+              onNavigate={navigateTo}
+              darkMode={darkMode}
+              onToggleDarkMode={toggleDarkMode}
+            />
+          </ProtectedRoute>
         );
       case 'profile':
-        return <Profile onNavigate={navigateTo} currentUser={currentUser} />;
+        return (
+          <ProtectedRoute>
+            <Profile onNavigate={navigateTo} currentUser={currentUser} />
+          </ProtectedRoute>
+        );
       case 'settings':
-        return <Settings onNavigate={navigateTo} />;
+        return (
+          <ProtectedRoute>
+            <Settings onNavigate={navigateTo} />
+          </ProtectedRoute>
+        );
       default:
         return <Welcome onNavigate={navigateTo} />;
     }

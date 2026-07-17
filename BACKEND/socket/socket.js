@@ -21,8 +21,42 @@ const initSocket = (server) => {
     // Listen for join event from clients
     socket.on('join', (userId) => {
       if (userId) {
+        // Clean up any old mapping for this socket to prevent stale routing
+        for (const [key, val] of Object.entries(userSocketMap)) {
+          if (val === socket.id) {
+            delete userSocketMap[key];
+          }
+        }
         userSocketMap[userId] = socket.id;
         console.log(`User Joined: ${userId}`);
+      }
+    });
+
+    // Listen for send_message event from clients
+    socket.on('send_message', (payload) => {
+      const { senderId, receiverId, message, timestamp } = payload || {};
+
+      console.log(`Message received: ${message}`);
+      console.log(`Sender ID: ${senderId}`);
+      console.log(`Receiver ID: ${receiverId}`);
+
+      // Validate payload
+      if (!senderId || !receiverId || !message) {
+        console.log('Validation failed: Missing senderId, receiverId, or message');
+        return;
+      }
+
+      const receiverSocketId = getReceiverSocketId(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('receive_message', {
+          senderId,
+          receiverId,
+          message,
+          timestamp: timestamp || new Date().toISOString()
+        });
+        console.log('Message delivered');
+      } else {
+        console.log('Message delivered (receiver offline)');
       }
     });
 

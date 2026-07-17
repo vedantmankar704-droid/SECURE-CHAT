@@ -12,23 +12,56 @@ const Register = ({ onNavigate }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
+    setError('');
+    setSuccess('');
+
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match!');
+      setError('Passwords do not match!');
       return;
     }
+
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const derivedUsername = formData.email.split('@')[0].toLowerCase() + Math.floor(Math.random() * 100);
+      const res = await fetch('http://localhost:5000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: formData.fullName,
+          username: derivedUsername,
+          email: formData.email,
+          password: formData.password
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setSuccess('Account created successfully! Redirecting to login...');
+        setTimeout(() => {
+          onNavigate('login');
+        }, 1500);
+      } else {
+        setError(data.message || 'Registration failed.');
+      }
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('Cannot connect to backend server. Please try again later.');
+    } finally {
       setLoading(false);
-      onNavigate('dashboard');
-    }, 1000);
+    }
   };
 
   return (
@@ -65,9 +98,29 @@ const Register = ({ onNavigate }) => {
         <h1 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-2">
           Create Account
         </h1>
-        <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
+        <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
           Join Message and connect with friends
         </p>
+
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 p-3.5 rounded-xl text-sm mb-6 flex items-center gap-2"
+          >
+            <span className="font-semibold">Error:</span> {error}
+          </motion.div>
+        )}
+
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 p-3.5 rounded-xl text-sm mb-6 flex items-center gap-2"
+          >
+            <span className="font-semibold">Success:</span> {success}
+          </motion.div>
+        )}
 
         <form onSubmit={handleRegister} className="space-y-4">
           {/* Full Name */}

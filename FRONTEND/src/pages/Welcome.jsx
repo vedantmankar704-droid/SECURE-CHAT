@@ -283,7 +283,7 @@ const Welcome = ({ onNavigate }) => {
                     <div className="space-y-4">
                       {/* Create User ID Option */}
                       <button
-                        onClick={() => setView('register')}
+                        onClick={() => onNavigate('register')}
                         className="w-full flex items-center justify-between p-4 border-2 border-gray-200 dark:border-gray-700 hover:border-primary dark:hover:border-primary rounded-xl hover:bg-blue-50/30 dark:hover:bg-primary/5 transition-all text-left group"
                       >
                         <div className="flex items-center gap-4">
@@ -300,7 +300,7 @@ const Welcome = ({ onNavigate }) => {
 
                       {/* Login Option */}
                       <button
-                        onClick={() => setView('login')}
+                        onClick={() => onNavigate('login')}
                         className="w-full flex items-center justify-between p-4 border-2 border-gray-200 dark:border-gray-700 hover:border-primary dark:hover:border-primary rounded-xl hover:bg-blue-50/30 dark:hover:bg-primary/5 transition-all text-left group"
                       >
                         <div className="flex items-center gap-4">
