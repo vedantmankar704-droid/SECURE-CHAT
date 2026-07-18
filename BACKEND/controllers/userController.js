@@ -14,7 +14,7 @@ const getUsers = async (req, res) => {
 
     // Find all users except the current logged-in user
     const users = await User.find({ _id: { $ne: loggedInUserId } })
-      .select('_id name username avatar isOnline lastSeen bio phone blockedUsers');
+      .select('_id name username avatar isOnline lastSeen bio phone blockedUsers publicKey');
 
     // Fetch latest message and unread count for each user
     const usersWithChatDetails = await Promise.all(users.map(async (u) => {
@@ -68,7 +68,8 @@ const getUsers = async (req, res) => {
         lastMessageTime: latestMessage ? latestMessage.createdAt : null,
         unreadCount: unreadCount || 0,
         isBlocked,
-        hasBlockedUs
+        hasBlockedUs,
+        publicKey: u.publicKey || ""
       };
     }));
 

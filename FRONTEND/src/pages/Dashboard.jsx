@@ -10,6 +10,7 @@ import ProfileModal from '../components/ProfileModal';
 import TypingIndicator from '../components/TypingIndicator';
 import socket from '../socket/socket';
 import { useAppStore } from '../store/appStore';
+import { initializeUserKeys, encryptMessagePayload, decryptMessage } from '../services/encryptionService';
 
 const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const { currentUser } = useAppStore();
@@ -34,6 +35,101 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [toast, setToast] = useState(null);
 
   const ourId = currentUser?.id || currentUser?._id;
+  const { updateCurrentUser } = useAppStore();
+
+  // E2EE Key Initialization
+  useEffect(() => {
+    const initE2EE = async () => {
+      if (!ourId) return;
+      try {
+        const keys = await initializeUserKeys(ourId);
+        
+        // Register key with backend if backend doesn't have it yet
+        if (currentUser && currentUser.publicKey !== keys.publicKey) {
+          console.log('Registering E2EE public key with backend...');
+          const token = localStorage.getItem('token');
+          const res = await fetch('http://localhost:5000/api/auth/profile', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              name: currentUser.name,
+              publicKey: keys.publicKey
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            console.log('E2EE public key registered successfully!');
+            updateCurrentUser({ ...currentUser, publicKey: keys.publicKey });
+          }
+        }
+      } catch (err) {
+        console.error('E2EE initialization failed:', err);
+      }
+    };
+    initE2EE();
+  }, [ourId, currentUser, updateCurrentUser]);
+
+  // E2EE Decryption Helpers
+  const decryptSingleMessage = async (m) => {
+    if (!m || !m.isEncrypted) return m;
+    const privKey = localStorage.getItem(`e2ee_priv_${ourId}`);
+    if (!privKey) return m;
+
+    try {
+      const encKey = (m.sender === ourId || m.sender?._id === ourId || m.isOwn) 
+        ? m.encryptedAESKeyForSender 
+        : m.encryptedAESKeyForReceiver;
+        
+      if (!encKey || !m.iv) return m;
+      const decryptedText = await decryptMessage(m.encryptedMessage, m.iv, encKey, privKey);
+      
+      let fileUrl = m.fileUrl;
+      let imageUrl = m.imageUrl;
+      let fileName = m.fileName;
+      let fileSize = m.fileSize;
+      let fileAesKey = m.fileAesKey;
+      let fileIv = m.fileIv;
+
+      if (m.encryptedFileUrl) {
+        const decryptedFileJson = await decryptMessage(m.encryptedFileUrl, m.iv, encKey, privKey);
+        const decryptedFile = JSON.parse(decryptedFileJson);
+        fileUrl = decryptedFile.fileUrl;
+        fileName = decryptedFile.fileName || m.fileName;
+        fileSize = decryptedFile.fileSize || m.fileSize;
+        fileAesKey = decryptedFile.aesKey;
+        fileIv = decryptedFile.iv;
+        if (m.messageType === 'image') {
+          imageUrl = fileUrl;
+        }
+      }
+
+      return {
+        ...m,
+        content: decryptedText,
+        imageUrl,
+        fileUrl,
+        fileName,
+        fileSize,
+        fileAesKey,
+        fileIv,
+        replyTo: m.replyTo ? await decryptSingleMessage(m.replyTo) : null
+      };
+    } catch (e) {
+      console.error("Single decryption error:", e);
+      return {
+        ...m,
+        content: "❌ Decryption failed"
+      };
+    }
+  };
+
+  const decryptConversationMessages = async (msgs) => {
+    if (!msgs) return [];
+    return await Promise.all(msgs.map(m => decryptSingleMessage(m)));
+  };
 
   // Fetch users on mount
   useEffect(() => {
@@ -214,33 +310,78 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     };
 
     // Receive message handler
-    const handleReceiveMessage = (data) => {
+    const handleReceiveMessage = async (data) => {
       console.log('Real-time message received via socket:', data);
-      const { sender, receiver, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, status, reactions, replyTo, isForwarded } = data || {};
+      const { 
+        sender, receiver, content, messageType, imageUrl, fileUrl, fileName, fileSize, 
+        _id, createdAt, status, reactions, replyTo, isForwarded,
+        isEncrypted, encryptedMessage, encryptedAESKeyForSender, encryptedAESKeyForReceiver, iv, encryptedFileUrl
+      } = data || {};
       
       if (receiver !== ourId) return;
 
       const partnerId = sender;
       const isCurrentChat = selectedChat && selectedChat.id === partnerId;
 
+      let decryptedContent = content;
+      let decryptedFileUrl = fileUrl;
+      let decryptedFileName = fileName;
+      let decryptedFileSize = fileSize;
+      let decryptedImageUrl = imageUrl;
+      let fileAesKey = null;
+      let fileIv = null;
+
+      if (isEncrypted) {
+        try {
+          const privKey = localStorage.getItem(`e2ee_priv_${ourId}`);
+          const encKey = (sender === ourId) ? encryptedAESKeyForSender : encryptedAESKeyForReceiver;
+          if (encKey && iv && privKey) {
+            decryptedContent = await decryptMessage(encryptedMessage, iv, encKey, privKey);
+            if (encryptedFileUrl) {
+              const decryptedFileJson = await decryptMessage(encryptedFileUrl, iv, encKey, privKey);
+              const decryptedFile = JSON.parse(decryptedFileJson);
+              decryptedFileUrl = decryptedFile.fileUrl;
+              decryptedFileName = decryptedFile.fileName || fileName;
+              decryptedFileSize = decryptedFile.fileSize || fileSize;
+              fileAesKey = decryptedFile.aesKey;
+              fileIv = decryptedFile.iv;
+              if (messageType === 'image') {
+                decryptedImageUrl = decryptedFileUrl;
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Socket incoming E2EE decryption failed:", e);
+          decryptedContent = "❌ Decryption failed";
+        }
+      }
+
       const newIncomingMessage = {
         id: _id || Date.now() + Math.random(),
         _id: _id,
         sender: 'Other',
-        content,
+        content: decryptedContent,
         timestamp: new Date(createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         isOwn: false,
         read: isCurrentChat || status === 'seen',
         avatar: '',
         messageType,
-        imageUrl,
-        fileUrl,
-        fileName,
-        fileSize,
+        imageUrl: decryptedImageUrl,
+        fileUrl: decryptedFileUrl,
+        fileName: decryptedFileName,
+        fileSize: decryptedFileSize,
+        fileAesKey,
+        fileIv,
         status: isCurrentChat ? 'seen' : (status || 'delivered'),
         reactions: reactions || [],
-        replyTo,
-        isForwarded
+        replyTo: replyTo ? await decryptSingleMessage(replyTo) : null,
+        isForwarded,
+        isEncrypted,
+        encryptedMessage,
+        encryptedAESKeyForSender,
+        encryptedAESKeyForReceiver,
+        iv,
+        encryptedFileUrl
       };
 
       setMessages(prev => {
@@ -265,11 +406,11 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       // Update last message preview in sidebar and move it to the top!
       let previewText = "Sent an attachment";
       if (messageType === 'text' || !messageType) {
-        previewText = content;
+        previewText = isEncrypted ? `🔒 ${decryptedContent}` : decryptedContent;
       } else if (messageType === 'image') {
         previewText = "📷 Image";
       } else if (messageType === 'file') {
-        previewText = `📄 ${fileName || "Document"}`;
+        previewText = `📄 ${decryptedFileName || "Document"}`;
       }
 
       setChats(prevChats => {
@@ -373,13 +514,21 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             reactions: msg.reactions || [],
             replyTo: msg.replyTo,
             isForwarded: msg.isForwarded,
-            isDeletedForEveryone: msg.isDeletedForEveryone
+            isDeletedForEveryone: msg.isDeletedForEveryone,
+            isEncrypted: msg.isEncrypted || false,
+            encryptedMessage: msg.encryptedMessage || "",
+            encryptedAESKeyForSender: msg.encryptedAESKeyForSender || "",
+            encryptedAESKeyForReceiver: msg.encryptedAESKeyForReceiver || "",
+            iv: msg.iv || "",
+            encryptedFileUrl: msg.encryptedFileUrl || ""
           }));
 
-          setMessages(prev => ({
-            ...prev,
-            [selectedChat.id]: normalizedMessages
-          }));
+          decryptConversationMessages(normalizedMessages).then(decrypted => {
+            setMessages(prev => ({
+              ...prev,
+              [selectedChat.id]: decrypted
+            }));
+          });
 
           // Mark incoming unread conversation logs as seen
           fetch(`http://localhost:5000/api/messages/seen/${selectedChat.id}`, {
@@ -662,12 +811,49 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         isForwarded
       };
 
+      let fileMeta = null;
       if (attachment) {
         messageBody.messageType = attachment.type;
-        messageBody.imageUrl = attachment.type === 'image' ? attachment.url : '';
-        messageBody.fileUrl = attachment.type === 'file' ? attachment.url : '';
-        messageBody.fileName = attachment.name;
-        messageBody.fileSize = attachment.size;
+        if (attachment.aesKey) {
+          // Already encrypted by MessageInput
+          fileMeta = {
+            fileUrl: attachment.fileUrl,
+            fileName: attachment.fileName,
+            fileSize: attachment.fileSize,
+            aesKey: attachment.aesKey,
+            iv: attachment.iv
+          };
+        } else {
+          // Plain legacy attachment
+          messageBody.imageUrl = attachment.type === 'image' ? attachment.url : '';
+          messageBody.fileUrl = attachment.type === 'file' ? attachment.url : '';
+          messageBody.fileName = attachment.name;
+          messageBody.fileSize = attachment.size;
+        }
+      }
+
+      // Check if E2EE encryption is active for recipient
+      if (selectedChat.publicKey && currentUser?.publicKey) {
+        try {
+          const encPayload = await encryptMessagePayload(
+            content || "",
+            fileMeta,
+            selectedChat.publicKey,
+            currentUser.publicKey
+          );
+
+          messageBody.isEncrypted = true;
+          messageBody.content = "🔒 End-to-End Encrypted Message";
+          messageBody.encryptedMessage = encPayload.encryptedMessage;
+          messageBody.encryptedAESKeyForSender = encPayload.encryptedAESKeyForSender;
+          messageBody.encryptedAESKeyForReceiver = encPayload.encryptedAESKeyForReceiver;
+          messageBody.iv = encPayload.iv;
+          messageBody.encryptedFileUrl = encPayload.encryptedFileUrl;
+        } catch (encErr) {
+          console.error("Failed to encrypt message payload:", encErr);
+          alert("Encryption failed. Message was not sent.");
+          return;
+        }
       }
 
       const res = await fetch('http://localhost:5000/api/messages', {
@@ -696,29 +882,45 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           fileSize: savedMsg.fileSize,
           createdAt: savedMsg.createdAt,
           replyTo: savedMsg.replyTo,
-          isForwarded: savedMsg.isForwarded
+          isForwarded: savedMsg.isForwarded,
+          isEncrypted: savedMsg.isEncrypted,
+          encryptedMessage: savedMsg.encryptedMessage,
+          encryptedAESKeyForSender: savedMsg.encryptedAESKeyForSender,
+          encryptedAESKeyForReceiver: savedMsg.encryptedAESKeyForReceiver,
+          iv: savedMsg.iv,
+          encryptedFileUrl: savedMsg.encryptedFileUrl
         };
         socket.emit('sendMessage', socketPayload);
 
-        // Append locally in history log
+        // Decrypt locally before appending to chat log UI
+        const localDecryptedMsg = await decryptSingleMessage(savedMsg);
+
         const localMsg = {
-          id: savedMsg._id,
-          _id: savedMsg._id,
+          id: localDecryptedMsg._id,
+          _id: localDecryptedMsg._id,
           sender: 'You',
-          content: savedMsg.content,
-          timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+          content: localDecryptedMsg.content,
+          timestamp: new Date(localDecryptedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
           isOwn: true,
-          read: savedMsg.status === 'seen',
+          read: localDecryptedMsg.status === 'seen',
           avatar: currentUser?.avatar,
-          messageType: savedMsg.messageType,
-          imageUrl: savedMsg.imageUrl,
-          fileUrl: savedMsg.fileUrl,
-          fileName: savedMsg.fileName,
-          fileSize: savedMsg.fileSize,
-          status: savedMsg.status,
+          messageType: localDecryptedMsg.messageType,
+          imageUrl: localDecryptedMsg.imageUrl,
+          fileUrl: localDecryptedMsg.fileUrl,
+          fileName: localDecryptedMsg.fileName,
+          fileSize: localDecryptedMsg.fileSize,
+          fileAesKey: localDecryptedMsg.fileAesKey,
+          fileIv: localDecryptedMsg.fileIv,
+          status: localDecryptedMsg.status,
           reactions: [],
-          replyTo: savedMsg.replyTo,
-          isForwarded: savedMsg.isForwarded
+          replyTo: localDecryptedMsg.replyTo,
+          isForwarded: localDecryptedMsg.isForwarded,
+          isEncrypted: localDecryptedMsg.isEncrypted,
+          encryptedMessage: localDecryptedMsg.encryptedMessage,
+          encryptedAESKeyForSender: localDecryptedMsg.encryptedAESKeyForSender,
+          encryptedAESKeyForReceiver: localDecryptedMsg.encryptedAESKeyForReceiver,
+          iv: localDecryptedMsg.iv,
+          encryptedFileUrl: localDecryptedMsg.encryptedFileUrl
         };
 
         setMessages(prev => ({
@@ -728,12 +930,12 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
         // Format sidebar message preview
         let previewText = "Sent an attachment";
-        if (savedMsg.messageType === 'text' || !savedMsg.messageType) {
-          previewText = content;
-        } else if (savedMsg.messageType === 'image') {
+        if (localDecryptedMsg.messageType === 'text' || !localDecryptedMsg.messageType) {
+          previewText = localDecryptedMsg.isEncrypted ? `🔒 ${localDecryptedMsg.content}` : localDecryptedMsg.content;
+        } else if (localDecryptedMsg.messageType === 'image') {
           previewText = "📷 Image";
-        } else if (savedMsg.messageType === 'file') {
-          previewText = `📄 ${savedMsg.fileName || "Document"}`;
+        } else if (localDecryptedMsg.messageType === 'file') {
+          previewText = `📄 ${localDecryptedMsg.fileName || "Document"}`;
         }
 
         setChats(prevChats => {
@@ -755,7 +957,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         });
       }
     } catch (err) {
-      console.error('Send message failed:', err);
+      console.error("Send message failed:", err);
     }
   };
 
@@ -973,6 +1175,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                   onStopTyping={handleStopTyping}
                   replyingTo={replyingMessage}
                   onCancelReply={() => setReplyingMessage(null)}
+                  recipientPublicKey={selectedChat.publicKey}
                 />
               )}
             </motion.div>

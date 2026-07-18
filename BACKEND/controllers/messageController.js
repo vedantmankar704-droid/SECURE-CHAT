@@ -8,7 +8,25 @@ const { getReceiverSocketId, getIO } = require('../socket/socket');
 // @access  Private
 const sendMessage = async (req, res) => {
   try {
-    const { receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, replyTo, isForwarded } = req.body;
+    const { 
+      receiverId, 
+      content, 
+      messageType, 
+      imageUrl, 
+      fileUrl, 
+      fileName, 
+      fileSize, 
+      replyTo, 
+      isForwarded,
+      isEncrypted,
+      encryptedMessage,
+      encryptedAESKeyForSender,
+      encryptedAESKeyForReceiver,
+      iv,
+      encryptedImageUrl,
+      encryptedFileUrl,
+      encryptedFileName
+    } = req.body;
     const senderId = req.user;
 
     console.log("[Controller] Sending message:");
@@ -57,7 +75,15 @@ const sendMessage = async (req, res) => {
       status: initialStatus,
       reactions: [],
       replyTo: replyTo || null,
-      isForwarded: isForwarded || false
+      isForwarded: isForwarded || false,
+      isEncrypted: isEncrypted || false,
+      encryptedMessage: encryptedMessage || "",
+      encryptedAESKeyForSender: encryptedAESKeyForSender || "",
+      encryptedAESKeyForReceiver: encryptedAESKeyForReceiver || "",
+      iv: iv || "",
+      encryptedImageUrl: encryptedImageUrl || "",
+      encryptedFileUrl: encryptedFileUrl || "",
+      encryptedFileName: encryptedFileName || ""
     });
     await newMessage.save();
 

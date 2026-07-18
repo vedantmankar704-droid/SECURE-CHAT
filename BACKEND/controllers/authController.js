@@ -44,7 +44,8 @@ const registerUser = async (req, res) => {
       name,
       username: username.toLowerCase(),
       email: email.toLowerCase(),
-      password: hashedPassword
+      password: hashedPassword,
+      publicKey: req.body.publicKey || ""
     });
 
     // Save to database
@@ -115,7 +116,8 @@ const loginUser = async (req, res) => {
         email: user.email,
         avatar: user.avatar || "",
         bio: user.bio || "",
-        phone: user.phone || ""
+        phone: user.phone || "",
+        publicKey: user.publicKey || ""
       }
     });
 
@@ -152,6 +154,7 @@ const getProfile = async (req, res) => {
         bio: user.bio || "",
         phone: user.phone || "",
         isOnline: user.isOnline,
+        publicKey: user.publicKey || "",
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       }
@@ -187,7 +190,8 @@ const getCurrentUser = async (req, res) => {
       bio: user.bio || "",
       phone: user.phone || "",
       isOnline: user.isOnline,
-      lastSeen: user.lastSeen
+      lastSeen: user.lastSeen,
+      publicKey: user.publicKey || ""
     });
   } catch (error) {
     console.error(`Get current user error: ${error.message}`);
@@ -247,7 +251,7 @@ const uploadAvatar = async (req, res) => {
 // @access  Private
 const updateProfile = async (req, res) => {
   try {
-    const { name, bio, phone } = req.body;
+    const { name, bio, phone, publicKey } = req.body;
 
     if (!name) {
       return res.status(400).json({
@@ -256,9 +260,14 @@ const updateProfile = async (req, res) => {
       });
     }
 
+    const updates = { name, bio, phone };
+    if (publicKey !== undefined) {
+      updates.publicKey = publicKey;
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       req.user,
-      { name, bio, phone },
+      updates,
       { new: true }
     ).select('-password');
 
@@ -281,7 +290,8 @@ const updateProfile = async (req, res) => {
         bio: updatedUser.bio || "",
         phone: updatedUser.phone || "",
         isOnline: updatedUser.isOnline,
-        lastSeen: updatedUser.lastSeen
+        lastSeen: updatedUser.lastSeen,
+        publicKey: updatedUser.publicKey || ""
       }
     });
   } catch (error) {

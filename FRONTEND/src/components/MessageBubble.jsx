@@ -1,6 +1,69 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, CheckCheck, FileText, Download, MoreHorizontal, CornerUpLeft, ArrowRight, Trash2, Ban } from 'lucide-react';
+import { decryptFile } from '../services/encryptionService';
+
+const EncryptedImage = ({ src, aesKey, iv, alt, className, onClick }) => {
+  const [decryptedUrl, setDecryptedUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!src || !aesKey || !iv) {
+      setDecryptedUrl(src);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    const loadAndDecrypt = async () => {
+      try {
+        const res = await fetch(src);
+        const encryptedBuffer = await res.arrayBuffer();
+        const decryptedBuffer = await decryptFile(encryptedBuffer, aesKey, iv);
+        
+        // Determine file type/mime from filename if possible, or default to image/jpeg
+        const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
+        const localUrl = URL.createObjectURL(blob);
+        
+        if (isMounted) {
+          setDecryptedUrl(localUrl);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to decrypt image file:", err);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadAndDecrypt();
+
+    return () => {
+      isMounted = false;
+      if (decryptedUrl && decryptedUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(decryptedUrl);
+      }
+    };
+  }, [src, aesKey, iv]);
+
+  if (loading) {
+    return (
+      <div className={`${className} flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse`}>
+        <span className="text-[10px] text-gray-400">Decrypting...</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={decryptedUrl}
+      alt={alt}
+      className={className}
+      onClick={onClick}
+    />
+  );
+};
 
 const MessageBubble = ({ 
   message, 
@@ -25,6 +88,30 @@ const MessageBubble = ({
   };
 
   const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
+
+  const handleDownloadFile = async (e) => {
+    e.preventDefault();
+    if (!message.fileAesKey || !message.fileIv) return;
+    try {
+      const res = await fetch(message.fileUrl);
+      const encryptedBuffer = await res.arrayBuffer();
+      const decryptedBuffer = await decryptFile(encryptedBuffer, message.fileAesKey, message.fileIv);
+      
+      const blob = new Blob([decryptedBuffer], { type: 'application/octet-stream' });
+      const localUrl = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = localUrl;
+      a.download = message.fileName || 'file';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(localUrl);
+    } catch (err) {
+      console.error("File decryption download failed:", err);
+      alert("Failed to decrypt and download file.");
+    }
+  };
 
   // Aggregate reactions by emoji
   const reactionGroups = (message.reactions || []).reduce((acc, current) => {
@@ -268,12 +355,23 @@ const MessageBubble = ({
                 </div>
               ) : message.messageType === 'image' || message.imageUrl ? (
                 <div className="flex flex-col gap-2">
-                  <img
-                    src={message.imageUrl || message.image}
-                    alt="Message Shared"
-                    onClick={() => onImageClick && onImageClick(message.imageUrl || message.image)}
-                    className="rounded-xl max-w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity max-h-64 object-cover"
-                  />
+                  {message.fileAesKey ? (
+                    <EncryptedImage
+                      src={message.imageUrl}
+                      aesKey={message.fileAesKey}
+                      iv={message.fileIv}
+                      alt="Message Shared"
+                      onClick={() => onImageClick && onImageClick(message.imageUrl)}
+                      className="rounded-xl max-w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity max-h-64 object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={message.imageUrl || message.image}
+                      alt="Message Shared"
+                      onClick={() => onImageClick && onImageClick(message.imageUrl || message.image)}
+                      className="rounded-xl max-w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity max-h-64 object-cover"
+                    />
+                  )}
                   {message.content && (
                     <p className="text-sm leading-relaxed break-words px-1">
                       {renderHighlightedContent(message.content, searchQuery)}
@@ -300,17 +398,29 @@ const MessageBubble = ({
                         {formatSize(message.fileSize)}
                       </p>
                     </div>
-                    <a
-                      href={message.fileUrl || message.file}
-                      download={message.fileName || 'file'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`p-1.5 rounded-full flex-shrink-0 hover:bg-black/10 dark:hover:bg-white/10 ${
-                        isOwnMessage ? 'text-white' : 'text-gray-655 dark:text-gray-400'
-                      }`}
-                    >
-                      <Download size={16} />
-                    </a>
+                    {message.fileAesKey ? (
+                      <button
+                        type="button"
+                        onClick={handleDownloadFile}
+                        className={`p-1.5 rounded-full flex-shrink-0 hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer ${
+                          isOwnMessage ? 'text-white' : 'text-gray-655 dark:text-gray-400'
+                        }`}
+                      >
+                        <Download size={16} />
+                      </button>
+                    ) : (
+                      <a
+                        href={message.fileUrl || message.file}
+                        download={message.fileName || 'file'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`p-1.5 rounded-full flex-shrink-0 hover:bg-black/10 dark:hover:bg-white/10 ${
+                          isOwnMessage ? 'text-white' : 'text-gray-655 dark:text-gray-400'
+                        }`}
+                      >
+                        <Download size={16} />
+                      </a>
+                    )}
                   </div>
                   {message.content && (
                     <p className="text-sm leading-relaxed break-words px-1">

@@ -85,6 +85,38 @@ const messageSchema = new mongoose.Schema({
   isForwarded: {
     type: Boolean,
     default: false
+  },
+  isEncrypted: {
+    type: Boolean,
+    default: false
+  },
+  encryptedMessage: {
+    type: String,
+    default: ""
+  },
+  encryptedAESKeyForSender: {
+    type: String,
+    default: ""
+  },
+  encryptedAESKeyForReceiver: {
+    type: String,
+    default: ""
+  },
+  iv: {
+    type: String,
+    default: ""
+  },
+  encryptedImageUrl: {
+    type: String,
+    default: ""
+  },
+  encryptedFileUrl: {
+    type: String,
+    default: ""
+  },
+  encryptedFileName: {
+    type: String,
+    default: ""
   }
 }, {
   timestamps: true

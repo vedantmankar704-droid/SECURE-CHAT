@@ -68,7 +68,28 @@ const initSocket = (server) => {
 
     // Listen for sendMessage event from clients (camelCase)
     socket.on('sendMessage', async (payload) => {
-      const { senderId, receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, replyTo, isForwarded } = payload || {};
+      const { 
+        senderId, 
+        receiverId, 
+        content, 
+        messageType, 
+        imageUrl, 
+        fileUrl, 
+        fileName, 
+        fileSize, 
+        _id, 
+        createdAt, 
+        replyTo, 
+        isForwarded,
+        isEncrypted,
+        encryptedMessage,
+        encryptedAESKeyForSender,
+        encryptedAESKeyForReceiver,
+        iv,
+        encryptedImageUrl,
+        encryptedFileUrl,
+        encryptedFileName
+      } = payload || {};
 
       console.log(`[Socket] Message received: ${content || '[Attachment]'}`);
       console.log(`Sender ID: ${senderId}`);
@@ -109,7 +130,15 @@ const initSocket = (server) => {
         status: deliveryStatus,
         reactions: [],
         replyTo: replyTo || null,
-        isForwarded: isForwarded || false
+        isForwarded: isForwarded || false,
+        isEncrypted: isEncrypted || false,
+        encryptedMessage: encryptedMessage || "",
+        encryptedAESKeyForSender: encryptedAESKeyForSender || "",
+        encryptedAESKeyForReceiver: encryptedAESKeyForReceiver || "",
+        iv: iv || "",
+        encryptedImageUrl: encryptedImageUrl || "",
+        encryptedFileUrl: encryptedFileUrl || "",
+        encryptedFileName: encryptedFileName || ""
       };
 
       if (receiverSocketId) {

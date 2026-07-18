@@ -101,6 +101,17 @@ const ProfileModal = ({ chat, onClose, onMessage, onToggleBlock }) => {
         {/* Content details body */}
         <div className="p-5 space-y-4 font-sans">
           
+          {/* E2EE Info Banner */}
+          <div className="p-3 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-150/40 dark:border-emerald-800/20 text-left flex gap-2.5">
+            <span className="text-emerald-600 dark:text-emerald-400 mt-0.5 text-xs select-none">🔒</span>
+            <div className="min-w-0 flex-1">
+              <h5 className="text-[10px] font-bold text-emerald-800 dark:text-emerald-400">End-to-End Encrypted</h5>
+              <p className="text-[9px] text-emerald-700/80 dark:text-emerald-500/80 mt-0.5 leading-normal animate-fade-in">
+                Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to, or share them.
+              </p>
+            </div>
+          </div>
+          
           {/* Email */}
           <div className="flex items-start gap-3 text-left">
             <Mail size={16} className="text-gray-400 mt-0.5" />

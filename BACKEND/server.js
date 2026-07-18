@@ -32,9 +32,54 @@ const server = http.createServer(app);
 // Initialize Socket.io
 initSocket(server);
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
+// Rate limiting setup
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: {
+    success: false,
+    message: "Too many requests, please try again later"
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Recursively sanitize strings to prevent XSS/HTML injections
+const sanitizeInput = (data) => {
+  if (typeof data === 'string') {
+    return data.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  if (Array.isArray(data)) {
+    return data.map(sanitizeInput);
+  }
+  if (data !== null && typeof data === 'object') {
+    const sanitizedObj = {};
+    for (const key in data) {
+      sanitizedObj[key] = sanitizeInput(data[key]);
+    }
+    return sanitizedObj;
+  }
+  return data;
+};
+
+const xssSanitizer = (req, res, next) => {
+  if (req.body) req.body = sanitizeInput(req.body);
+  if (req.query) req.query = sanitizeInput(req.query);
+  if (req.params) req.params = sanitizeInput(req.params);
+  next();
+};
+
 // Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: false
+}));
 app.use(cors());
 app.use(express.json());
+app.use(xssSanitizer);
+app.use('/api/', limiter);
 app.use('/uploads', express.static(uploadsDir));
 
 

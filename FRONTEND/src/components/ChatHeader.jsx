@@ -77,34 +77,43 @@ const ChatHeader = ({
                   <TypingIndicator />
                 </div>
               ) : (
-                <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-                  {chat.isOnline && !chat.isBlocked ? 'Online' : (() => {
-                    if (chat.isBlocked || !chat.lastSeen) return 'Offline';
-                    try {
-                      const date = new Date(chat.lastSeen);
-                      if (isNaN(date.getTime())) return 'Offline';
-                      const now = new Date();
-                      
-                      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                      const yesterday = new Date(today);
-                      yesterday.setDate(yesterday.getDate() - 1);
-                      
-                      const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-                      const timeString = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                      
-                      if (compareDate.getTime() === today.getTime()) {
-                        return `last seen today at ${timeString}`;
-                      } else if (compareDate.getTime() === yesterday.getTime()) {
-                        return `last seen yesterday at ${timeString}`;
-                      } else {
-                        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                        return `last seen on ${dateStr} at ${timeString}`;
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                    {chat.isOnline && !chat.isBlocked ? 'Online' : (() => {
+                      if (chat.isBlocked || !chat.lastSeen) return 'Offline';
+                      try {
+                        const date = new Date(chat.lastSeen);
+                        if (isNaN(date.getTime())) return 'Offline';
+                        const now = new Date();
+                        
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        const yesterday = new Date(today);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        
+                        const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                        const timeString = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                        
+                        if (compareDate.getTime() === today.getTime()) {
+                          return `last seen today at ${timeString}`;
+                        } else if (compareDate.getTime() === yesterday.getTime()) {
+                          return `last seen yesterday at ${timeString}`;
+                        } else {
+                          const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                          return `last seen on ${dateStr} at ${timeString}`;
+                        }
+                      } catch (e) {
+                        return 'Offline';
                       }
-                    } catch (e) {
-                      return 'Offline';
-                    }
-                  })()}
-                </p>
+                    })()}
+                  </p>
+                  <span className="text-gray-300 dark:text-gray-600 text-[10px] select-none">•</span>
+                  <span 
+                    className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-0.5 select-none hover:opacity-80 transition-opacity cursor-help"
+                    title="Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to, or share them."
+                  >
+                    🔒 Encrypted
+                  </span>
+                </div>
               )}
             </div>
           </div>

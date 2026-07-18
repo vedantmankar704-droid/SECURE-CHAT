@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, Smile, X, Image, File, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmojiPicker from './EmojiPicker';
+import { encryptFile, bufferToBase64 } from '../services/encryptionService';
 
-const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCancelReply }) => {
+const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCancelReply, recipientPublicKey }) => {
   const [message, setMessage] = useState('');
   const [rows, setRows] = useState(1);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -110,8 +111,41 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCan
     if (selectedFile) {
       setIsUploading(true);
       try {
+        let fileToUpload = selectedFile;
+        let e2eeMeta = null;
+
+        // If E2EE public key is available, encrypt file before upload
+        if (recipientPublicKey) {
+          try {
+            const fileAesKey = await window.crypto.subtle.generateKey(
+              { name: 'AES-GCM', length: 256 },
+              true,
+              ['encrypt', 'decrypt']
+            );
+            const fileAesKeyRaw = await window.crypto.subtle.exportKey('raw', fileAesKey);
+            const fileAesKeyRawBase64 = bufferToBase64(fileAesKeyRaw);
+            const fileIv = window.crypto.getRandomValues(new Uint8Array(12));
+            const fileIvBase64 = bufferToBase64(fileIv);
+
+            const fileBuffer = await selectedFile.arrayBuffer();
+            const encryptedBuffer = await encryptFile(fileBuffer, fileAesKeyRawBase64, fileIvBase64);
+            const encryptedBlob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
+
+            fileToUpload = encryptedBlob;
+            e2eeMeta = {
+              aesKey: fileAesKeyRawBase64,
+              iv: fileIvBase64
+            };
+          } catch (encErr) {
+            console.error('File encryption error before upload:', encErr);
+            alert('File encryption failed');
+            setIsUploading(false);
+            return;
+          }
+        }
+
         const formData = new FormData();
-        formData.append('file', selectedFile);
+        formData.append('file', fileToUpload, selectedFile.name);
 
         const token = localStorage.getItem('token');
         const res = await fetch('http://localhost:5000/api/messages/upload', {
@@ -124,7 +158,14 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCan
 
         const data = await res.json();
         if (res.ok && data.success) {
-          attachmentPayload = data.file;
+          attachmentPayload = e2eeMeta ? {
+            fileUrl: data.file.fileUrl,
+            fileName: selectedFile.name,
+            fileSize: selectedFile.size,
+            aesKey: e2eeMeta.aesKey,
+            iv: e2eeMeta.iv,
+            type: selectedFile.type.startsWith('image/') ? 'image' : 'file'
+          } : data.file;
         } else {
           alert(data.message || 'File upload failed');
           setIsUploading(false);
