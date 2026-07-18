@@ -11,7 +11,8 @@ const MessageBubble = ({
   onReply,
   onForward,
   onDelete,
-  searchQuery
+  searchQuery,
+  scrollToMessage
 }) => {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
 
@@ -65,73 +66,12 @@ const MessageBubble = ({
 
   return (
     <motion.div
+      id={`msg-${message._id || message.id}`}
       variants={bubbleVariants}
       initial="initial"
       animate="animate"
       className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-5 group relative`}
     >
-      {/* Quick Reaction Bar on Hover (Desktop) */}
-      {!message.isDeletedForEveryone && (
-        <div className={`absolute -top-7.5 ${isOwnMessage ? 'right-2' : 'left-2'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-250 dark:border-gray-700 shadow-md rounded-full px-2 py-0.5 z-20`}>
-          {REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              onClick={() => onReact && onReact(message.id || message._id, emoji)}
-              className={`text-sm hover:scale-125 transition-transform p-0.5 active:scale-95 ${userReaction?.emoji === emoji ? 'bg-indigo-50 dark:bg-indigo-900/30 rounded-full' : ''}`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Options Menu Trigger on Hover */}
-      {!message.isDeletedForEveryone && (
-        <div className={`absolute top-1/2 -translate-y-1/2 ${isOwnMessage ? 'left-[-42px]' : 'right-[-42px]'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-15`}>
-          <div className="relative">
-            <button
-              onClick={() => setShowActionsMenu(!showActionsMenu)}
-              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 rounded-full shadow-sm bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-700"
-            >
-              <MoreHorizontal size={14} />
-            </button>
-            
-            {showActionsMenu && (
-              <div className={`absolute top-6 ${isOwnMessage ? 'left-0' : 'right-0'} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1 z-35 w-32 font-semibold`}>
-                <button
-                  onClick={() => {
-                    if (onReply) onReply(message);
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-xs text-gray-750 dark:text-gray-250 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2"
-                >
-                  <CornerUpLeft size={13} className="text-gray-500" /> Reply
-                </button>
-                <button
-                  onClick={() => {
-                    if (onForward) onForward(message);
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-xs text-gray-750 dark:text-gray-250 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2"
-                >
-                  <ArrowRight size={13} className="text-gray-500" /> Forward
-                </button>
-                <button
-                  onClick={() => {
-                    if (onDelete) onDelete(message);
-                    setShowActionsMenu(false);
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2"
-                >
-                  <Trash2 size={13} /> Delete
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Bubble body content */}
       <div className={`flex gap-2.5 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-[78%] sm:max-w-[70%] md:max-w-[62%]`}>
         {/* Avatar */}
@@ -144,8 +84,87 @@ const MessageBubble = ({
         )}
 
         <div className="flex flex-col">
-          {/* Overlapping badge wrapper */}
-          <div className="relative">
+          {/* Overlapping badge wrapper & hovered options wrapper */}
+          <div className="relative flex items-center group/bubble">
+            
+            {/* Options Menu Trigger on Hover */}
+            {!message.isDeletedForEveryone && (
+              <button
+                type="button"
+                onClick={() => setShowActionsMenu(!showActionsMenu)}
+                className={`absolute ${isOwnMessage ? 'left-[-32px]' : 'right-[-32px]'} top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 focus:opacity-100 transition-opacity duration-200 p-1 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 rounded-full shadow-md border border-gray-200 dark:border-gray-700 z-20 cursor-pointer`}
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            )}
+
+            {/* Dropdown Action Menu */}
+            <AnimatePresence>
+              {showActionsMenu && (
+                <>
+                  {/* Backdrop for click outside */}
+                  <div 
+                    className="fixed inset-0 z-25 cursor-default" 
+                    onClick={() => setShowActionsMenu(false)}
+                  />
+                  
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -5 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -5 }}
+                    transition={{ duration: 0.15 }}
+                    className={`absolute ${isOwnMessage ? 'right-0' : 'left-0'} top-full mt-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-750 rounded-2xl shadow-xl p-2 z-30 w-44 font-sans text-left`}
+                  >
+                    {/* Emoji Reaction Row (React with Emoji) */}
+                    <div className="flex items-center justify-between px-1 py-1 border-b border-gray-100 dark:border-gray-700/60 mb-1.5">
+                      {REACTIONS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            if (onReact) onReact(message.id || message._id, emoji);
+                            setShowActionsMenu(false);
+                          }}
+                          className={`text-base hover:scale-130 transition-transform p-0.5 active:scale-95 ${userReaction?.emoji === emoji ? 'bg-indigo-50 dark:bg-indigo-900/30 rounded-full' : ''}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Action list */}
+                    <button
+                      onClick={() => {
+                        if (onReply) onReply(message);
+                        setShowActionsMenu(false);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <CornerUpLeft size={13} className="text-gray-500" /> Reply
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (onForward) onForward(message);
+                        setShowActionsMenu(false);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-gray-750 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <ArrowRight size={13} className="text-gray-500" /> Forward
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (onDelete) onDelete(message);
+                        setShowActionsMenu(false);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={13} /> Delete
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+
             <div
               className={`message-bubble overflow-hidden transition-all hover:shadow-md ${
                 message.isDeletedForEveryone
@@ -167,9 +186,12 @@ const MessageBubble = ({
 
               {/* Replied Message Preview Box */}
               {message.replyTo && !message.isDeletedForEveryone && (
-                <div className={`mb-2 p-2 border-l-4 border-primary rounded text-xs select-none text-left opacity-90 max-w-full ${
-                  isOwnMessage ? 'bg-white/10 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
-                }`}>
+                <div 
+                  onClick={() => scrollToMessage && scrollToMessage(message.replyTo._id || message.replyTo.id)}
+                  className={`mb-2 p-2 border-l-4 border-primary rounded text-xs select-none text-left opacity-90 max-w-full cursor-pointer hover:opacity-100 transition-opacity ${
+                    isOwnMessage ? 'bg-white/10 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-805 dark:text-gray-200'
+                  }`}
+                >
                   <p className={`font-bold text-[11px] mb-0.5 truncate ${isOwnMessage ? 'text-blue-100' : 'text-primary'}`}>
                     {message.replyTo.sender?.name || (message.replyTo.sender === currentUserId ? 'You' : 'Recipient')}
                   </p>

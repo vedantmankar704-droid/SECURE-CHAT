@@ -587,6 +587,21 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     }
   };
 
+  // Scroll to original message when clicking reply quotes
+  const scrollToMessage = (msgId) => {
+    const element = document.getElementById(`msg-${msgId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const bubble = element.querySelector('.message-bubble');
+      if (bubble) {
+        bubble.classList.add('ring-4', 'ring-yellow-300', 'dark:ring-yellow-800', 'scale-[1.02]', 'transition-all', 'duration-300');
+        setTimeout(() => {
+          bubble.classList.remove('ring-4', 'ring-yellow-300', 'dark:ring-yellow-800', 'scale-[1.02]');
+        }, 1500);
+      }
+    }
+  };
+
   const handleSendMessage = async (content, attachment = null, replyToId = null, isForwarded = false) => {
     if (!selectedChat) return;
 
@@ -859,6 +874,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                           }}
                           onDelete={(m) => setDeleteModalMsg(m)}
                           searchQuery={searchMessageQuery}
+                          scrollToMessage={scrollToMessage}
                         />
                       ))}
 
