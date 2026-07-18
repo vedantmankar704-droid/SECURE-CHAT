@@ -57,7 +57,12 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             timestamp: '',
             lastSeen: u.lastSeen,
             lastMessageTime: u.lastMessageTime,
-            unread: u.unreadCount || 0
+            unread: u.unreadCount || 0,
+            email: u.email || `${u.username}@example.com`,
+            phone: u.phone || 'No phone provided',
+            bio: u.bio || 'Hello, I am using Secure Chat!',
+            isBlocked: u.isBlocked || false,
+            hasBlockedUs: u.hasBlockedUs || false
           })).sort((a, b) => {
             const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
             const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
@@ -606,6 +611,30 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     }
   };
 
+  // Handle toggling of user block status
+  const handleToggleBlock = (userId, newBlockState) => {
+    setChats(prev => prev.map(c => c.id === userId ? { ...c, isBlocked: newBlockState } : c));
+    if (selectedChat && selectedChat.id === userId) {
+      setSelectedChat(prev => ({ ...prev, isBlocked: newBlockState }));
+    }
+    setToast({
+      type: 'success',
+      message: newBlockState ? 'User blocked successfully' : 'User unblocked successfully'
+    });
+  };
+
+  // Switch to message conversation from profile details modal
+  const handleMessageFromProfile = (user) => {
+    const fullUser = chats.find(c => c.id === user.id || c.id === user._id) || user;
+    setSelectedChat(fullUser);
+    setTimeout(() => {
+      const input = document.getElementById('chat-message-input');
+      if (input) {
+        input.focus();
+      }
+    }, 150);
+  };
+
   // Scroll to original message when clicking reply quotes
   const scrollToMessage = (msgId) => {
     const element = document.getElementById(`msg-${msgId}`);
@@ -920,14 +949,32 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                 </div>
               </motion.div>
 
-              {/* Message Input */}
-              <MessageInput
-                onSendMessage={handleSendMessage}
-                onTyping={handleTyping}
-                onStopTyping={handleStopTyping}
-                replyingTo={replyingMessage}
-                onCancelReply={() => setReplyingMessage(null)}
-              />
+              {/* Message Input / Blocked Banner */}
+              {selectedChat.isBlocked ? (
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border-t border-gray-205 dark:border-gray-700 text-center select-none flex flex-col items-center justify-center gap-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-semibold italic">
+                    You blocked this user
+                  </p>
+                  <button
+                    onClick={() => handleToggleBlock(selectedChat.id, false)}
+                    className="px-4 py-1.5 bg-indigo-650 hover:bg-indigo-750 text-white rounded-full font-bold text-xs transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              ) : selectedChat.hasBlockedUs ? (
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/60 border-t border-gray-205 dark:border-gray-700 text-center select-none text-xs text-gray-500 dark:text-gray-400 font-semibold italic">
+                  You cannot send messages to this contact
+                </div>
+              ) : (
+                <MessageInput
+                  onSendMessage={handleSendMessage}
+                  onTyping={handleTyping}
+                  onStopTyping={handleStopTyping}
+                  replyingTo={replyingMessage}
+                  onCancelReply={() => setReplyingMessage(null)}
+                />
+              )}
             </motion.div>
           ) : (
             <EmptyChat />
@@ -939,12 +986,14 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       <AnimatePresence>
         {showProfileModal && (
           <ProfileModal
-            chat={{
+            chat={chats.find(c => c.id === selectedChat.id) || {
               ...selectedChat,
               isOnline: onlineUsers.includes(selectedChat.id),
               lastSeen: chats.find(c => c.id === selectedChat.id)?.lastSeen
             }}
             onClose={() => setShowProfileModal(false)}
+            onMessage={handleMessageFromProfile}
+            onToggleBlock={handleToggleBlock}
           />
         )}
       </AnimatePresence>

@@ -1,5 +1,6 @@
 const Message = require('../models/Message');
 const Chat = require('../models/Chat');
+const User = require('../models/User');
 const { getReceiverSocketId, getIO } = require('../socket/socket');
 
 // @desc    Send a message to a user
@@ -18,6 +19,24 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Receiver ID is required"
+      });
+    }
+
+    // Verify block status
+    const senderDoc = await User.findById(senderId).select('blockedUsers');
+    const receiverDoc = await User.findById(receiverId).select('blockedUsers');
+
+    if (senderDoc?.blockedUsers?.map(id => id.toString()).includes(receiverId.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "You have blocked this user"
+      });
+    }
+
+    if (receiverDoc?.blockedUsers?.map(id => id.toString()).includes(senderId.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "This user has blocked you"
       });
     }
 

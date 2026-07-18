@@ -8,9 +8,13 @@ const getUsers = async (req, res) => {
   try {
     const loggedInUserId = req.user;
     
+    // Get logged-in user's blocked users
+    const currentUserDoc = await User.findById(loggedInUserId).select('blockedUsers');
+    const blockedList = currentUserDoc?.blockedUsers?.map(id => id.toString()) || [];
+
     // Find all users except the current logged-in user
     const users = await User.find({ _id: { $ne: loggedInUserId } })
-      .select('_id name username avatar isOnline lastSeen bio phone');
+      .select('_id name username avatar isOnline lastSeen bio phone blockedUsers');
 
     // Fetch latest message and unread count for each user
     const usersWithChatDetails = await Promise.all(users.map(async (u) => {
@@ -47,6 +51,10 @@ const getUsers = async (req, res) => {
         }
       }
 
+      const isBlocked = blockedList.includes(u._id.toString());
+      const targetBlockedList = u.blockedUsers?.map(id => id.toString()) || [];
+      const hasBlockedUs = targetBlockedList.includes(loggedInUserId.toString());
+
       return {
         _id: u._id,
         name: u.name,
@@ -58,7 +66,9 @@ const getUsers = async (req, res) => {
         phone: u.phone || '',
         lastMessage: previewText,
         lastMessageTime: latestMessage ? latestMessage.createdAt : null,
-        unreadCount: unreadCount || 0
+        unreadCount: unreadCount || 0,
+        isBlocked,
+        hasBlockedUs
       };
     }));
 
@@ -75,6 +85,69 @@ const getUsers = async (req, res) => {
   }
 };
 
+// @desc    Block a user
+// @route   POST /api/users/block/:userId
+// @access  Private
+const blockUser = async (req, res) => {
+  try {
+    const loggedInUserId = req.user;
+    const { userId } = req.params;
+
+    if (loggedInUserId.toString() === userId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot block yourself"
+      });
+    }
+
+    const currentUser = await User.findById(loggedInUserId);
+    if (!currentUser.blockedUsers.includes(userId)) {
+      currentUser.blockedUsers.push(userId);
+      await currentUser.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User blocked successfully"
+    });
+  } catch (error) {
+    console.error(`Block user error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
+// @desc    Unblock a user
+// @route   POST /api/users/unblock/:userId
+// @access  Private
+const unblockUser = async (req, res) => {
+  try {
+    const loggedInUserId = req.user;
+    const { userId } = req.params;
+
+    const currentUser = await User.findById(loggedInUserId);
+    currentUser.blockedUsers = currentUser.blockedUsers.filter(
+      id => id.toString() !== userId.toString()
+    );
+    await currentUser.save();
+
+    res.status(200).json({
+      success: true,
+      message: "User unblocked successfully"
+    });
+  } catch (error) {
+    console.error(`Unblock user error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
 module.exports = {
-  getUsers
+  getUsers,
+  blockUser,
+  unblockUser
 };

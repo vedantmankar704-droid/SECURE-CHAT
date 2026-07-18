@@ -50,7 +50,7 @@ const ChatItem = ({ chat, isActive, onClick }) => {
             alt={chat.name}
             className="w-12 h-12 rounded-full object-cover shadow-sm border border-gray-100 dark:border-gray-700"
           />
-          {chat.isOnline && (
+          {chat.isOnline && !chat.isBlocked && (
             <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800 ring-1 ring-green-400"></span>
           )}
         </div>
@@ -58,8 +58,13 @@ const ChatItem = ({ chat, isActive, onClick }) => {
         {/* Info Area */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1.5">
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-              {chat.name}
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white truncate flex items-center gap-1.5">
+              <span>{chat.name}</span>
+              {chat.isBlocked && (
+                <span className="text-[9px] bg-red-50 dark:bg-red-950/30 text-red-500 border border-red-100 dark:border-red-950/30 rounded px-1.5 py-0.5 font-bold select-none">
+                  Blocked
+                </span>
+              )}
             </h3>
             <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-2 flex-shrink-0 font-medium">
               {displayTime}

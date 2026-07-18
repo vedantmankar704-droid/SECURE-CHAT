@@ -67,7 +67,7 @@ const initSocket = (server) => {
     });
 
     // Listen for sendMessage event from clients (camelCase)
-    socket.on('sendMessage', (payload) => {
+    socket.on('sendMessage', async (payload) => {
       const { senderId, receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, replyTo, isForwarded } = payload || {};
 
       console.log(`[Socket] Message received: ${content || '[Attachment]'}`);
@@ -77,6 +77,19 @@ const initSocket = (server) => {
       if (!senderId || !receiverId) {
         console.log('Validation failed: Missing senderId or receiverId');
         return;
+      }
+
+      // Check block status before forwarding
+      try {
+        const senderDoc = await User.findById(senderId).select('blockedUsers');
+        const receiverDoc = await User.findById(receiverId).select('blockedUsers');
+        if (senderDoc?.blockedUsers?.map(id => id.toString()).includes(receiverId.toString()) ||
+            receiverDoc?.blockedUsers?.map(id => id.toString()).includes(senderId.toString())) {
+          console.log('[Socket] Message blocked: Active block relationship');
+          return;
+        }
+      } catch (err) {
+        console.error('Socket block validation check failed:', err);
       }
 
       const receiverSocketId = getReceiverSocketId(receiverId);
@@ -115,7 +128,15 @@ const initSocket = (server) => {
     });
 
     // Listen for typing events
-    socket.on('typing', ({ senderId, receiverId }) => {
+    socket.on('typing', async ({ senderId, receiverId }) => {
+      try {
+        const receiverDoc = await User.findById(receiverId).select('blockedUsers');
+        const senderDoc = await User.findById(senderId).select('blockedUsers');
+        if (receiverDoc?.blockedUsers?.map(id => id.toString()).includes(senderId.toString()) ||
+            senderDoc?.blockedUsers?.map(id => id.toString()).includes(receiverId.toString())) {
+          return;
+        }
+      } catch (e) {}
       const receiverSocketId = getReceiverSocketId(receiverId);
       if (receiverSocketId) {
         io.to(receiverSocketId).emit('typing', { senderId });
@@ -123,7 +144,15 @@ const initSocket = (server) => {
     });
 
     // Listen for stopTyping events
-    socket.on('stopTyping', ({ senderId, receiverId }) => {
+    socket.on('stopTyping', async ({ senderId, receiverId }) => {
+      try {
+        const receiverDoc = await User.findById(receiverId).select('blockedUsers');
+        const senderDoc = await User.findById(senderId).select('blockedUsers');
+        if (receiverDoc?.blockedUsers?.map(id => id.toString()).includes(senderId.toString()) ||
+            senderDoc?.blockedUsers?.map(id => id.toString()).includes(receiverId.toString())) {
+          return;
+        }
+      } catch (e) {}
       const receiverSocketId = getReceiverSocketId(receiverId);
       if (receiverSocketId) {
         io.to(receiverSocketId).emit('stopTyping', { senderId });

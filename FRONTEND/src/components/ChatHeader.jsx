@@ -62,7 +62,7 @@ const ChatHeader = ({
                 alt={chat.name}
                 className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-100 dark:border-gray-700"
               />
-              {chat.isOnline && (
+              {chat.isOnline && !chat.isBlocked && (
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800 ring-1 ring-green-400"></div>
               )}
             </div>
@@ -71,15 +71,15 @@ const ChatHeader = ({
               <h2 className="font-semibold text-sm text-gray-900 dark:text-white leading-tight">
                 {chat.name}
               </h2>
-              {isTyping ? (
+              {isTyping && !chat.isBlocked ? (
                 <div className="flex items-center gap-1.5 mt-0.5 text-xs text-primary font-medium">
                   <span>typing</span>
                   <TypingIndicator />
                 </div>
               ) : (
                 <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-                  {chat.isOnline ? 'Online' : (() => {
-                    if (!chat.lastSeen) return 'Offline';
+                  {chat.isOnline && !chat.isBlocked ? 'Online' : (() => {
+                    if (chat.isBlocked || !chat.lastSeen) return 'Offline';
                     try {
                       const date = new Date(chat.lastSeen);
                       if (isNaN(date.getTime())) return 'Offline';

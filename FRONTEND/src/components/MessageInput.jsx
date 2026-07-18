@@ -262,6 +262,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCan
         {/* Input Text Area */}
         <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-3xl px-4 py-2 flex items-center">
           <textarea
+            id="chat-message-input"
             ref={textareaRef}
             value={message}
             onChange={handleInputChange}
