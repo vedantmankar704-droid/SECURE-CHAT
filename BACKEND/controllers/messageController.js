@@ -103,7 +103,7 @@ const getConversation = async (req, res) => {
         { sender: loggedInUserId, receiver: userId },
         { sender: userId, receiver: loggedInUserId }
       ],
-      deletedBy: { $ne: loggedInUserId }
+      deletedForUsers: { $ne: loggedInUserId }
     }).populate({
       path: 'replyTo',
       populate: { path: 'sender', select: 'name' }
@@ -307,16 +307,20 @@ const deleteMessage = async (req, res) => {
         });
       }
 
-      message.isDeletedForEveryone = true;
+      message.isDeleted = true;
+      message.deletedForEveryone = true;
+      message.deletedBy = userId;
+      message.deletedAt = new Date();
       message.content = "This message was deleted";
       message.messageType = "text";
       message.imageUrl = "";
       message.fileUrl = "";
       message.fileName = "";
       message.fileSize = 0;
+      message.reactions = []; // Clear reactions as per the prompt
       await message.save();
 
-      // Update Chat lastMessage
+      // Update Chat lastMessage preview
       let chat = await Chat.findOne({
         participants: { $all: [message.sender, message.receiver] }
       });
@@ -325,7 +329,7 @@ const deleteMessage = async (req, res) => {
         await chat.save();
       }
 
-      // Notify recipient via Socket
+      // Notify recipient and sender via Socket.IO
       const receiverSocketId = getReceiverSocketId(message.receiver.toString());
       const senderSocketId = getReceiverSocketId(message.sender.toString());
       const io = getIO();
@@ -339,8 +343,8 @@ const deleteMessage = async (req, res) => {
       if (senderSocketId) io.to(senderSocketId).emit('messageDeleted', deletePayload);
     } else {
       // Delete for me
-      if (!message.deletedBy.includes(userId)) {
-        message.deletedBy.push(userId);
+      if (!message.deletedForUsers.includes(userId)) {
+        message.deletedForUsers.push(userId);
         await message.save();
       }
     }

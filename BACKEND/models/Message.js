@@ -59,16 +59,29 @@ const messageSchema = new mongoose.Schema({
     ref: 'Message',
     default: null
   },
-  deletedBy: [
+  isDeleted: {
+    type: Boolean,
+    default: false
+  },
+  deletedForEveryone: {
+    type: Boolean,
+    default: false
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  deletedAt: {
+    type: Date,
+    default: null
+  },
+  deletedForUsers: [
     {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     }
   ],
-  isDeletedForEveryone: {
-    type: Boolean,
-    default: false
-  },
   isForwarded: {
     type: Boolean,
     default: false

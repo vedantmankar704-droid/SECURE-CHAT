@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import ChatHeader from '../components/ChatHeader';
 import MessageBubble from '../components/MessageBubble';
@@ -30,6 +30,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [forwardingMessage, setForwardingMessage] = useState(null);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [deleteModalMsg, setDeleteModalMsg] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [toast, setToast] = useState(null);
 
   const ourId = currentUser?.id || currentUser?._id;
 
@@ -70,6 +72,16 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
     fetchUsers();
   }, []);
+
+  // Auto-dismiss toast notification after 3 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Socket.io integration
   useEffect(() => {
@@ -183,7 +195,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         const chatMsgs = prev[partnerId] || [];
         const updated = chatMsgs.map(m => 
           (m.id === messageId || m._id === messageId) 
-            ? { ...m, isDeletedForEveryone: true, content: "This message was deleted", messageType: "text", imageUrl: "", fileUrl: "", fileName: "", fileSize: 0 }
+            ? { ...m, isDeleted: true, deletedForEveryone: true, content: "This message was deleted", messageType: "text", imageUrl: "", fileUrl: "", fileName: "", fileSize: 0, reactions: [] }
             : m
         );
         return { ...prev, [partnerId]: updated };
@@ -435,6 +447,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
   // Execute delete message
   const executeDeleteMessage = async (msg, deleteType) => {
+    setIsDeleting(true);
     try {
       const token = localStorage.getItem('token');
       const msgId = msg._id || msg.id;
@@ -453,7 +466,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             const chatMsgs = prev[selectedChat.id] || [];
             const updated = chatMsgs.map(m => 
               (m.id === msgId || m._id === msgId) 
-                ? { ...m, isDeletedForEveryone: true, content: "This message was deleted", messageType: "text", imageUrl: "", fileUrl: "", fileName: "", fileSize: 0 }
+                ? { ...m, isDeleted: true, deletedForEveryone: true, content: "This message was deleted", messageType: "text", imageUrl: "", fileUrl: "", fileName: "", fileSize: 0, reactions: [] }
                 : m
             );
             return { ...prev, [selectedChat.id]: updated };
@@ -462,17 +475,23 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           setChats(prevChats => prevChats.map(c => 
             c.id === selectedChat.id ? { ...c, lastMessage: "This message was deleted" } : c
           ));
+          setToast({ type: 'success', message: 'Message deleted for everyone' });
         } else {
           setMessages(prev => {
             const chatMsgs = prev[selectedChat.id] || [];
             const updated = chatMsgs.filter(m => m.id !== msgId && m._id !== msgId);
             return { ...prev, [selectedChat.id]: updated };
           });
+          setToast({ type: 'success', message: 'Message deleted for you' });
         }
+      } else {
+        setToast({ type: 'error', message: data.message || 'Failed to delete message' });
       }
     } catch (err) {
       console.error("Delete message failed:", err);
+      setToast({ type: 'error', message: 'An error occurred. Please try again.' });
     } finally {
+      setIsDeleting(false);
       setDeleteModalMsg(null);
     }
   };
@@ -937,43 +956,90 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
           >
             <motion.div
-              initial={{ scale: 0.95, y: 10 }}
+              initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 10 }}
-              className="bg-white dark:bg-gray-805 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-150 dark:border-gray-700"
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-gray-700/85 flex flex-col items-center text-center"
             >
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 text-left">
-                Delete Message?
+              {/* Trash Header Icon */}
+              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center text-red-550 mb-4 shadow-inner">
+                <Trash2 size={22} />
+              </div>
+
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">
+                Delete message?
               </h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 text-left leading-relaxed">
+              
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 leading-relaxed max-w-[280px]">
                 Are you sure you want to delete this message? This action cannot be undone.
               </p>
-              <div className="flex flex-col gap-2">
+
+              <div className="flex flex-col gap-2.5 w-full">
                 {(deleteModalMsg.isOwn || deleteModalMsg.sender === 'You') && (
                   <button
+                    disabled={isDeleting}
                     onClick={() => executeDeleteMessage(deleteModalMsg, 'everyone')}
-                    className="w-full py-2 bg-red-650 hover:bg-red-750 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                    className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] shadow-md shadow-red-200/50 dark:shadow-none"
                   >
-                    Delete for Everyone
+                    {isDeleting ? (
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : null}
+                    <span>Delete for Everyone</span>
                   </button>
                 )}
+                
                 <button
+                  disabled={isDeleting}
                   onClick={() => executeDeleteMessage(deleteModalMsg, 'me')}
-                  className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-650 text-gray-950 dark:text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-650 disabled:bg-gray-50 dark:disabled:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
                 >
-                  Delete for Me
+                  {isDeleting ? (
+                    <span className="w-4 h-4 border-2 border-gray-600 dark:border-gray-450 border-t-transparent rounded-full animate-spin" />
+                  ) : null}
+                  <span>Delete for Me</span>
                 </button>
+                
                 <button
+                  disabled={isDeleting}
                   onClick={() => setDeleteModalMsg(null)}
-                  className="w-full py-2 text-gray-500 hover:text-gray-750 dark:text-gray-450 text-xs font-semibold transition-colors mt-1 cursor-pointer"
+                  className="w-full py-2 text-gray-550 hover:text-gray-750 dark:text-gray-400 dark:hover:text-gray-200 text-xs font-semibold transition-all mt-1 cursor-pointer hover:underline disabled:opacity-50"
                 >
                   Cancel
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notifications */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 rounded-2xl shadow-xl max-w-sm w-full select-none"
+          >
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="text-emerald-500 flex-shrink-0" size={18} />
+            ) : (
+              <AlertCircle className="text-red-500 flex-shrink-0" size={18} />
+            )}
+            <span className="text-xs font-bold text-gray-800 dark:text-gray-200 text-left flex-1 leading-relaxed">
+              {toast.message}
+            </span>
+            <button 
+              onClick={() => setToast(null)}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+            >
+              <X size={14} />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

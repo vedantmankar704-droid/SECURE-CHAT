@@ -88,7 +88,7 @@ const MessageBubble = ({
           <div className="relative flex items-center group/bubble">
             
             {/* Options Menu Trigger on Hover */}
-            {!message.isDeletedForEveryone && (
+            {!(message.isDeleted || message.deletedForEveryone) && (
               <button
                 type="button"
                 onClick={() => setShowActionsMenu(!showActionsMenu)}
@@ -167,17 +167,17 @@ const MessageBubble = ({
 
             <div
               className={`message-bubble overflow-hidden transition-all hover:shadow-md ${
-                message.isDeletedForEveryone
+                (message.isDeleted || message.deletedForEveryone)
                   ? 'bg-gray-150 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700/50 p-3'
                   : isOwnMessage
                     ? 'outgoing'
                     : 'incoming'
               } ${
-                !message.isDeletedForEveryone && (message.messageType === 'image' || message.imageUrl) && !message.content ? '!p-0' : 'p-3'
+                !(message.isDeleted || message.deletedForEveryone) && (message.messageType === 'image' || message.imageUrl) && !message.content ? '!p-0' : 'p-3'
               }`}
             >
               {/* Forwarded Tag */}
-              {message.isForwarded && !message.isDeletedForEveryone && (
+              {message.isForwarded && !(message.isDeleted || message.deletedForEveryone) && (
                 <div className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 mb-1 select-none font-medium italic opacity-95">
                   <span className="scale-x-[-1] inline-block font-sans">↪</span>
                   <span>Forwarded</span>
@@ -185,7 +185,7 @@ const MessageBubble = ({
               )}
 
               {/* Replied Message Preview Box */}
-              {message.replyTo && !message.isDeletedForEveryone && (
+              {message.replyTo && !(message.isDeleted || message.deletedForEveryone) && (
                 <div 
                   onClick={() => scrollToMessage && scrollToMessage(message.replyTo._id || message.replyTo.id)}
                   className={`mb-2 p-2 border-l-4 border-primary rounded text-xs select-none text-left opacity-90 max-w-full cursor-pointer hover:opacity-100 transition-opacity ${
@@ -201,7 +201,7 @@ const MessageBubble = ({
                 </div>
               )}
 
-              {message.isDeletedForEveryone ? (
+              {(message.isDeleted || message.deletedForEveryone) ? (
                 <p className="text-sm italic text-gray-500 dark:text-gray-400 flex items-center gap-1.5 select-none">
                   <Trash2 size={13} className="opacity-60" />
                   <span>This message was deleted</span>
@@ -267,7 +267,7 @@ const MessageBubble = ({
 
             {/* Reactions Overlap Badge */}
             <AnimatePresence>
-              {Object.keys(reactionGroups).length > 0 && !message.isDeletedForEveryone && (
+              {Object.keys(reactionGroups).length > 0 && !(message.isDeleted || message.deletedForEveryone) && (
                 <motion.div
                   layout
                   initial={{ scale: 0.7, opacity: 0 }}
@@ -299,7 +299,7 @@ const MessageBubble = ({
           {/* Time & Double Checks Status indicators */}
           <div className={`flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400 mt-1 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
             <span>{message.timestamp}</span>
-            {isOwnMessage && !message.isDeletedForEveryone && (
+            {isOwnMessage && !(message.isDeleted || message.deletedForEveryone) && (
               <span>
                 {message.status === 'seen' ? (
                   <CheckCheck size={13} className="text-blue-500" />
