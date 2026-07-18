@@ -4,7 +4,6 @@ import Welcome from './pages/Welcome';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import { useAppStore } from './store/appStore';
 import socket from './socket/socket';
@@ -119,11 +118,6 @@ function App() {
           </ProtectedRoute>
         );
       case 'profile':
-        return (
-          <ProtectedRoute>
-            <Profile onNavigate={navigateTo} currentUser={currentUser} />
-          </ProtectedRoute>
-        );
       case 'settings':
         return (
           <ProtectedRoute>
