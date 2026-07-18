@@ -1,11 +1,24 @@
-import { motion } from 'framer-motion';
-import { Check, CheckCheck, FileText, Download } from 'lucide-react';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Check, CheckCheck, FileText, Download, MoreHorizontal, CornerUpLeft, ArrowRight, Trash2 } from 'lucide-react';
 
-const MessageBubble = ({ message, isOwnMessage, onReact, onImageClick, currentUserId }) => {
+const MessageBubble = ({ 
+  message, 
+  isOwnMessage, 
+  onReact, 
+  onImageClick, 
+  currentUserId,
+  onReply,
+  onForward,
+  onDelete,
+  searchQuery
+}) => {
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+
   const bubbleVariants = {
     initial: { opacity: 0, y: 10 },
     animate: { opacity: 1, y: 0 },
-    transition: { duration: 0.3 }
+    transition: { duration: 0.25 }
   };
 
   const REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
@@ -30,97 +43,241 @@ const MessageBubble = ({ message, isOwnMessage, onReact, onImageClick, currentUs
     r => (r.userId?.toString() === currentUserId || r.userId?._id?.toString() === currentUserId)
   );
 
+  // Search highlighting helper
+  const renderHighlightedContent = (text, query) => {
+    if (!text) return '';
+    if (!query) return text;
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return (
+      <>
+        {parts.map((part, i) => 
+          part.toLowerCase() === query.toLowerCase() ? (
+            <mark key={i} className="bg-yellow-250 dark:bg-yellow-850 text-black px-0.5 rounded font-medium">
+              {part}
+            </mark>
+          ) : (
+            part
+          )
+        )}
+      </>
+    );
+  };
+
   return (
     <motion.div
       variants={bubbleVariants}
       initial="initial"
       animate="animate"
-      className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-4 group relative`}
+      className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} mb-5 group relative`}
     >
       {/* Quick Reaction Bar on Hover (Desktop) */}
-      <div className={`absolute -top-7 ${isOwnMessage ? 'right-2' : 'left-2'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-full px-2 py-0.5 z-20`}>
-        {REACTIONS.map((emoji) => (
-          <button
-            key={emoji}
-            type="button"
-            onClick={() => onReact(message.id || message._id, emoji)}
-            className={`text-sm hover:scale-125 transition-transform p-0.5 active:scale-95 ${userReaction?.emoji === emoji ? 'bg-indigo-50 dark:bg-indigo-900/30 rounded-full' : ''}`}
-          >
-            {emoji}
-          </button>
-        ))}
-      </div>
+      {!message.isDeletedForEveryone && (
+        <div className={`absolute -top-7.5 ${isOwnMessage ? 'right-2' : 'left-2'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-250 dark:border-gray-700 shadow-md rounded-full px-2 py-0.5 z-20`}>
+          {REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => onReact && onReact(message.id || message._id, emoji)}
+              className={`text-sm hover:scale-125 transition-transform p-0.5 active:scale-95 ${userReaction?.emoji === emoji ? 'bg-indigo-50 dark:bg-indigo-900/30 rounded-full' : ''}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <div className={`flex gap-2.5 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-xs sm:max-w-md`}>
+      {/* Options Menu Trigger on Hover */}
+      {!message.isDeletedForEveryone && (
+        <div className={`absolute top-1/2 -translate-y-1/2 ${isOwnMessage ? 'left-[-42px]' : 'right-[-42px]'} opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-15`}>
+          <div className="relative">
+            <button
+              onClick={() => setShowActionsMenu(!showActionsMenu)}
+              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 rounded-full shadow-sm bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-700"
+            >
+              <MoreHorizontal size={14} />
+            </button>
+            
+            {showActionsMenu && (
+              <div className={`absolute top-6 ${isOwnMessage ? 'left-0' : 'right-0'} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl py-1 z-35 w-32 font-semibold`}>
+                <button
+                  onClick={() => {
+                    if (onReply) onReply(message);
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-gray-750 dark:text-gray-250 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2"
+                >
+                  <CornerUpLeft size={13} className="text-gray-500" /> Reply
+                </button>
+                <button
+                  onClick={() => {
+                    if (onForward) onForward(message);
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-gray-750 dark:text-gray-250 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-2"
+                >
+                  <ArrowRight size={13} className="text-gray-500" /> Forward
+                </button>
+                <button
+                  onClick={() => {
+                    if (onDelete) onDelete(message);
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2"
+                >
+                  <Trash2 size={13} /> Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bubble body content */}
+      <div className={`flex gap-2.5 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'} max-w-[78%] sm:max-w-[70%] md:max-w-[62%]`}>
         {/* Avatar */}
         {!isOwnMessage && message.avatar && (
           <img
             src={message.avatar}
             alt="Avatar"
-            className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-1 shadow-sm"
+            className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-1 shadow-sm border border-gray-100 dark:border-gray-800"
           />
         )}
 
         <div className="flex flex-col">
-          {/* Main Message Bubble */}
-          <div
-            className={`message-bubble overflow-hidden ${isOwnMessage ? 'outgoing' : 'incoming'} transition-shadow hover:shadow-md`}
-          >
-            {message.messageType === 'image' || message.imageUrl ? (
-              <div className="flex flex-col gap-2">
-                <img
-                  src={message.imageUrl || message.image}
-                  alt="Message Shared"
-                  onClick={() => onImageClick && onImageClick(message.imageUrl || message.image)}
-                  className="rounded-2xl max-w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity max-h-60 object-cover"
-                />
-                {message.content && (
-                  <p className="text-sm leading-relaxed break-words text-gray-900 dark:text-white px-1">
-                    {message.content}
-                  </p>
-                )}
-              </div>
-            ) : message.messageType === 'file' || message.fileUrl ? (
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-3 p-2 bg-gray-100/80 dark:bg-gray-800/40 rounded-xl border border-gray-200/50 dark:border-gray-700/50">
-                  <div className="bg-primary/10 text-primary w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <FileText size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-gray-950 dark:text-white truncate">
-                      {message.fileName || message.file || 'attachment'}
-                    </p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                      {formatSize(message.fileSize)}
-                    </p>
-                  </div>
-                  <a
-                    href={message.fileUrl || message.file}
-                    download={message.fileName || 'file'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 text-gray-600 dark:text-gray-400 rounded-full flex-shrink-0"
-                  >
-                    <Download size={16} />
-                  </a>
+          {/* Overlapping badge wrapper */}
+          <div className="relative">
+            <div
+              className={`message-bubble overflow-hidden transition-all hover:shadow-md ${
+                message.isDeletedForEveryone
+                  ? 'bg-gray-150 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700/50 p-3'
+                  : isOwnMessage
+                    ? 'outgoing'
+                    : 'incoming'
+              } ${
+                !message.isDeletedForEveryone && (message.messageType === 'image' || message.imageUrl) && !message.content ? '!p-0' : 'p-3'
+              }`}
+            >
+              {/* Forwarded Tag */}
+              {message.isForwarded && !message.isDeletedForEveryone && (
+                <div className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 mb-1 select-none font-medium italic opacity-95">
+                  <span className="scale-x-[-1] inline-block font-sans">↪</span>
+                  <span>Forwarded</span>
                 </div>
-                {message.content && (
-                  <p className="text-sm leading-relaxed break-words text-gray-900 dark:text-white px-1">
-                    {message.content}
+              )}
+
+              {/* Replied Message Preview Box */}
+              {message.replyTo && !message.isDeletedForEveryone && (
+                <div className={`mb-2 p-2 border-l-4 border-primary rounded text-xs select-none text-left opacity-90 max-w-full ${
+                  isOwnMessage ? 'bg-white/10 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
+                }`}>
+                  <p className={`font-bold text-[11px] mb-0.5 truncate ${isOwnMessage ? 'text-blue-100' : 'text-primary'}`}>
+                    {message.replyTo.sender?.name || (message.replyTo.sender === currentUserId ? 'You' : 'Recipient')}
                   </p>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm leading-relaxed break-words text-gray-900 dark:text-white">
-                {message.content}
-              </p>
-            )}
+                  <p className="truncate opacity-80">
+                    {message.replyTo.messageType === 'image' ? '📷 Image' : message.replyTo.messageType === 'file' ? `📄 ${message.replyTo.fileName}` : message.replyTo.content}
+                  </p>
+                </div>
+              )}
+
+              {message.isDeletedForEveryone ? (
+                <p className="text-sm italic text-gray-500 dark:text-gray-400 flex items-center gap-1.5 select-none">
+                  <Trash2 size={13} className="opacity-60" />
+                  <span>This message was deleted</span>
+                </p>
+              ) : message.messageType === 'image' || message.imageUrl ? (
+                <div className="flex flex-col gap-2">
+                  <img
+                    src={message.imageUrl || message.image}
+                    alt="Message Shared"
+                    onClick={() => onImageClick && onImageClick(message.imageUrl || message.image)}
+                    className="rounded-xl max-w-full h-auto cursor-zoom-in hover:opacity-95 transition-opacity max-h-64 object-cover"
+                  />
+                  {message.content && (
+                    <p className="text-sm leading-relaxed break-words px-1">
+                      {renderHighlightedContent(message.content, searchQuery)}
+                    </p>
+                  )}
+                </div>
+              ) : message.messageType === 'file' || message.fileUrl ? (
+                <div className="flex flex-col gap-2">
+                  <div className={`flex items-center gap-3 p-2.5 rounded-xl border ${
+                    isOwnMessage 
+                      ? 'bg-white/10 border-white/20 text-white' 
+                      : 'bg-gray-100/80 dark:bg-gray-800/40 border-gray-200/50 dark:border-gray-700/50'
+                  }`}>
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      isOwnMessage ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                    }`}>
+                      <FileText size={20} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs font-bold truncate ${isOwnMessage ? 'text-white' : 'text-gray-950 dark:text-white'}`}>
+                        {message.fileName || message.file || 'attachment'}
+                      </p>
+                      <p className={`text-[10px] ${isOwnMessage ? 'text-blue-150' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {formatSize(message.fileSize)}
+                      </p>
+                    </div>
+                    <a
+                      href={message.fileUrl || message.file}
+                      download={message.fileName || 'file'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`p-1.5 rounded-full flex-shrink-0 hover:bg-black/10 dark:hover:bg-white/10 ${
+                        isOwnMessage ? 'text-white' : 'text-gray-655 dark:text-gray-400'
+                      }`}
+                    >
+                      <Download size={16} />
+                    </a>
+                  </div>
+                  {message.content && (
+                    <p className="text-sm leading-relaxed break-words px-1">
+                      {renderHighlightedContent(message.content, searchQuery)}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm leading-relaxed break-words">
+                  {renderHighlightedContent(message.content, searchQuery)}
+                </p>
+              )}
+            </div>
+
+            {/* Reactions Overlap Badge */}
+            <AnimatePresence>
+              {Object.keys(reactionGroups).length > 0 && !message.isDeletedForEveryone && (
+                <motion.div
+                  layout
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.7, opacity: 0 }}
+                  onClick={() => onReact && onReact(message.id || message._id, userReaction ? userReaction.emoji : '❤️')}
+                  className={`absolute -bottom-2.5 ${isOwnMessage ? 'right-3' : 'left-3'} flex items-center gap-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-md rounded-full px-1.5 py-0.5 text-xs cursor-pointer select-none z-10 hover:scale-105 active:scale-95 transition-all`}
+                >
+                  {Object.entries(reactionGroups).map(([emoji, count]) => (
+                    <motion.span 
+                      key={emoji} 
+                      initial={{ scale: 0.6 }}
+                      animate={{ scale: 1 }}
+                      className="flex items-center gap-0.5"
+                    >
+                      {emoji} 
+                      {count > 1 && (
+                        <span className="text-[9px] text-gray-500 font-bold ml-0.5">
+                          {count}
+                        </span>
+                      )}
+                    </motion.span>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Time & Double Checks Status indicators */}
-          <div className={`flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400 mt-1 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
+          <div className={`flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400 mt-1 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
             <span>{message.timestamp}</span>
-            {isOwnMessage && (
+            {isOwnMessage && !message.isDeletedForEveryone && (
               <span>
                 {message.status === 'seen' ? (
                   <CheckCheck size={13} className="text-blue-500" />
@@ -132,20 +289,6 @@ const MessageBubble = ({ message, isOwnMessage, onReact, onImageClick, currentUs
               </span>
             )}
           </div>
-
-          {/* Reactions Sub-container */}
-          {Object.keys(reactionGroups).length > 0 && (
-            <div
-              onClick={() => onReact(message.id || message._id, userReaction ? userReaction.emoji : '❤️')}
-              className={`flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-700 shadow-sm rounded-full px-2 py-0.5 mt-1 text-[11px] self-${isOwnMessage ? 'end' : 'start'} cursor-pointer select-none active:scale-95 transition-transform`}
-            >
-              {Object.entries(reactionGroups).map(([emoji, count]) => (
-                <span key={emoji} className="flex items-center gap-0.5">
-                  {emoji} <span className="text-[9px] text-gray-500 font-bold">{count > 1 ? count : ''}</span>
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </motion.div>

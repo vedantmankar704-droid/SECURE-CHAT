@@ -68,7 +68,7 @@ const initSocket = (server) => {
 
     // Listen for sendMessage event from clients (camelCase)
     socket.on('sendMessage', (payload) => {
-      const { senderId, receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt } = payload || {};
+      const { senderId, receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, replyTo, isForwarded } = payload || {};
 
       console.log(`[Socket] Message received: ${content || '[Attachment]'}`);
       console.log(`Sender ID: ${senderId}`);
@@ -94,7 +94,9 @@ const initSocket = (server) => {
         fileSize: fileSize || 0,
         createdAt: createdAt || new Date().toISOString(),
         status: deliveryStatus,
-        reactions: []
+        reactions: [],
+        replyTo: replyTo || null,
+        isForwarded: isForwarded || false
       };
 
       if (receiverSocketId) {

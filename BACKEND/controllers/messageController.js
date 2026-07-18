@@ -7,7 +7,7 @@ const { getReceiverSocketId, getIO } = require('../socket/socket');
 // @access  Private
 const sendMessage = async (req, res) => {
   try {
-    const { receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize } = req.body;
+    const { receiverId, content, messageType, imageUrl, fileUrl, fileName, fileSize, replyTo, isForwarded } = req.body;
     const senderId = req.user;
 
     console.log("[Controller] Sending message:");
@@ -36,9 +36,18 @@ const sendMessage = async (req, res) => {
       fileName: fileName || "",
       fileSize: fileSize || 0,
       status: initialStatus,
-      reactions: []
+      reactions: [],
+      replyTo: replyTo || null,
+      isForwarded: isForwarded || false
     });
     await newMessage.save();
+
+    if (newMessage.replyTo) {
+      await newMessage.populate({
+        path: 'replyTo',
+        populate: { path: 'sender', select: 'name' }
+      });
+    }
 
     // 2. Find or create a Chat to update the lastMessage
     let previewText = "Sent an attachment";
@@ -93,7 +102,11 @@ const getConversation = async (req, res) => {
       $or: [
         { sender: loggedInUserId, receiver: userId },
         { sender: userId, receiver: loggedInUserId }
-      ]
+      ],
+      deletedBy: { $ne: loggedInUserId }
+    }).populate({
+      path: 'replyTo',
+      populate: { path: 'sender', select: 'name' }
     }).sort({ createdAt: 1 });
 
     res.status(200).json({
@@ -272,10 +285,84 @@ const uploadAttachment = async (req, res) => {
   }
 };
 
+const deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { deleteType } = req.body; // 'me' or 'everyone'
+    const userId = req.user;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Message not found"
+      });
+    }
+
+    if (deleteType === 'everyone') {
+      if (message.sender.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only delete your own messages for everyone"
+        });
+      }
+
+      message.isDeletedForEveryone = true;
+      message.content = "This message was deleted";
+      message.messageType = "text";
+      message.imageUrl = "";
+      message.fileUrl = "";
+      message.fileName = "";
+      message.fileSize = 0;
+      await message.save();
+
+      // Update Chat lastMessage
+      let chat = await Chat.findOne({
+        participants: { $all: [message.sender, message.receiver] }
+      });
+      if (chat) {
+        chat.lastMessage = "This message was deleted";
+        await chat.save();
+      }
+
+      // Notify recipient via Socket
+      const receiverSocketId = getReceiverSocketId(message.receiver.toString());
+      const senderSocketId = getReceiverSocketId(message.sender.toString());
+      const io = getIO();
+      const deletePayload = {
+        messageId: message._id,
+        senderId: message.sender,
+        receiverId: message.receiver
+      };
+
+      if (receiverSocketId) io.to(receiverSocketId).emit('messageDeleted', deletePayload);
+      if (senderSocketId) io.to(senderSocketId).emit('messageDeleted', deletePayload);
+    } else {
+      // Delete for me
+      if (!message.deletedBy.includes(userId)) {
+        message.deletedBy.push(userId);
+        await message.save();
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Message deleted successfully"
+    });
+  } catch (error) {
+    console.error(`Delete message error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
+  }
+};
+
 module.exports = {
   sendMessage,
   getConversation,
   markAsSeen,
   toggleReaction,
-  uploadAttachment
+  uploadAttachment,
+  deleteMessage
 };

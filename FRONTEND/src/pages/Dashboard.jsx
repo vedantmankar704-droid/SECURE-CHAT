@@ -23,6 +23,14 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [lightboxUrl, setLightboxUrl] = useState('');
 
+  // Added States for Reply, Forward, Delete, Search features
+  const [replyingMessage, setReplyingMessage] = useState(null);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [searchMessageQuery, setSearchMessageQuery] = useState('');
+  const [forwardingMessage, setForwardingMessage] = useState(null);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [deleteModalMsg, setDeleteModalMsg] = useState(null);
+
   const ourId = currentUser?.id || currentUser?._id;
 
   // Fetch users on mount
@@ -43,10 +51,16 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             username: u.username,
             avatar: u.avatar || 'https://i.pravatar.cc/150?img=10',
             isOnline: false,
-            lastMessage: 'Click to start chatting',
+            lastMessage: u.lastMessage || 'Click to start chatting',
             timestamp: '',
-            lastSeen: u.lastSeen
-          }));
+            lastSeen: u.lastSeen,
+            lastMessageTime: u.lastMessageTime,
+            unread: u.unreadCount || 0
+          })).sort((a, b) => {
+            const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+            const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+            return timeB - timeA;
+          });
           setChats(normalizedUsers);
         }
       } catch (err) {
@@ -161,14 +175,36 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       }
     };
 
+    // Message deleted handler
+    const handleMessageDeleted = ({ messageId, senderId, receiverId }) => {
+      console.log('Real-time message deleted via socket:', messageId);
+      const partnerId = senderId === ourId ? receiverId : senderId;
+      setMessages(prev => {
+        const chatMsgs = prev[partnerId] || [];
+        const updated = chatMsgs.map(m => 
+          (m.id === messageId || m._id === messageId) 
+            ? { ...m, isDeletedForEveryone: true, content: "This message was deleted", messageType: "text", imageUrl: "", fileUrl: "", fileName: "", fileSize: 0 }
+            : m
+        );
+        return { ...prev, [partnerId]: updated };
+      });
+
+      setChats(prevChats => prevChats.map(c => 
+        (c.id === partnerId || c._id === partnerId) 
+          ? { ...c, lastMessage: "This message was deleted" }
+          : c
+      ));
+    };
+
     // Receive message handler
     const handleReceiveMessage = (data) => {
       console.log('Real-time message received via socket:', data);
-      const { sender, receiver, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, status, reactions } = data || {};
+      const { sender, receiver, content, messageType, imageUrl, fileUrl, fileName, fileSize, _id, createdAt, status, reactions, replyTo, isForwarded } = data || {};
       
       if (receiver !== ourId) return;
 
       const partnerId = sender;
+      const isCurrentChat = selectedChat && selectedChat.id === partnerId;
 
       const newIncomingMessage = {
         id: _id || Date.now() + Math.random(),
@@ -177,15 +213,17 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         content,
         timestamp: new Date(createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
         isOwn: false,
-        read: status === 'seen',
+        read: isCurrentChat || status === 'seen',
         avatar: '',
         messageType,
         imageUrl,
         fileUrl,
         fileName,
         fileSize,
-        status: status || 'delivered',
-        reactions: reactions || []
+        status: isCurrentChat ? 'seen' : (status || 'delivered'),
+        reactions: reactions || [],
+        replyTo,
+        isForwarded
       };
 
       setMessages(prev => {
@@ -197,7 +235,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       });
 
       // Mark seen immediately if active conversation panel is open
-      if (selectedChat && selectedChat.id === partnerId) {
+      if (isCurrentChat) {
         const token = localStorage.getItem('token');
         fetch(`http://localhost:5000/api/messages/seen/${partnerId}`, {
           method: 'PUT',
@@ -207,7 +245,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         }).catch(err => console.error("Real-time seen update failed:", err));
       }
 
-      // Update last message preview in sidebar
+      // Update last message preview in sidebar and move it to the top!
       let previewText = "Sent an attachment";
       if (messageType === 'text' || !messageType) {
         previewText = content;
@@ -217,11 +255,23 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         previewText = `📄 ${fileName || "Document"}`;
       }
 
-      setChats(prevChats => prevChats.map(c => 
-        c.id === partnerId 
-          ? { ...c, lastMessage: previewText, timestamp: new Date(createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }
-          : c
-      ));
+      setChats(prevChats => {
+        const updated = prevChats.map(c => 
+          c.id === partnerId 
+            ? { 
+                ...c, 
+                lastMessage: previewText, 
+                lastMessageTime: createdAt, 
+                unread: isCurrentChat ? 0 : (c.unread || 0) + 1 
+              }
+            : c
+        );
+        return [...updated].sort((a, b) => {
+          const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+          const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+          return timeB - timeA;
+        });
+      });
     };
 
     // Typing Event handlers
@@ -249,6 +299,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     socket.on('reactionAdded', handleReactionAdded);
     socket.on('reactionRemoved', handleReactionRemoved);
     socket.on('reactionUpdated', handleReactionUpdated);
+    socket.on('messageDeleted', handleMessageDeleted);
     socket.on('typing', handleTypingEvent);
     socket.on('stopTyping', handleStopTypingEvent);
 
@@ -264,6 +315,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       socket.off('reactionAdded', handleReactionAdded);
       socket.off('reactionRemoved', handleReactionRemoved);
       socket.off('reactionUpdated', handleReactionUpdated);
+      socket.off('messageDeleted', handleMessageDeleted);
       socket.off('typing', handleTypingEvent);
       socket.off('stopTyping', handleStopTypingEvent);
     };
@@ -272,6 +324,9 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   // Fetch conversation history and trigger 'seen' status update when selectedChat changes
   useEffect(() => {
     if (!selectedChat) return;
+
+    // Reset unread badge count locally on chat selection
+    setChats(prev => prev.map(c => c.id === selectedChat.id ? { ...c, unread: 0 } : c));
 
     const fetchHistory = async () => {
       try {
@@ -298,7 +353,10 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             fileName: msg.fileName,
             fileSize: msg.fileSize,
             status: msg.status,
-            reactions: msg.reactions || []
+            reactions: msg.reactions || [],
+            replyTo: msg.replyTo,
+            isForwarded: msg.isForwarded,
+            isDeletedForEveryone: msg.isDeletedForEveryone
           }));
 
           setMessages(prev => ({
@@ -375,14 +433,170 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     }
   };
 
-  const handleSendMessage = async (content, attachment = null) => {
+  // Execute delete message
+  const executeDeleteMessage = async (msg, deleteType) => {
+    try {
+      const token = localStorage.getItem('token');
+      const msgId = msg._id || msg.id;
+      const res = await fetch(`http://localhost:5000/api/messages/${msgId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ deleteType })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (deleteType === 'everyone') {
+          setMessages(prev => {
+            const chatMsgs = prev[selectedChat.id] || [];
+            const updated = chatMsgs.map(m => 
+              (m.id === msgId || m._id === msgId) 
+                ? { ...m, isDeletedForEveryone: true, content: "This message was deleted", messageType: "text", imageUrl: "", fileUrl: "", fileName: "", fileSize: 0 }
+                : m
+            );
+            return { ...prev, [selectedChat.id]: updated };
+          });
+
+          setChats(prevChats => prevChats.map(c => 
+            c.id === selectedChat.id ? { ...c, lastMessage: "This message was deleted" } : c
+          ));
+        } else {
+          setMessages(prev => {
+            const chatMsgs = prev[selectedChat.id] || [];
+            const updated = chatMsgs.filter(m => m.id !== msgId && m._id !== msgId);
+            return { ...prev, [selectedChat.id]: updated };
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Delete message failed:", err);
+    } finally {
+      setDeleteModalMsg(null);
+    }
+  };
+
+  // Execute forward message
+  const executeForwardMessage = async (targetChat, msg) => {
+    try {
+      const token = localStorage.getItem('token');
+      const messageBody = {
+        receiverId: targetChat.id,
+        content: msg.content || "",
+        isForwarded: true
+      };
+
+      if (msg.messageType === 'image' || msg.imageUrl) {
+        messageBody.messageType = 'image';
+        messageBody.imageUrl = msg.imageUrl;
+      } else if (msg.messageType === 'file' || msg.fileUrl) {
+        messageBody.messageType = 'file';
+        messageBody.fileUrl = msg.fileUrl;
+        messageBody.fileName = msg.fileName;
+        messageBody.fileSize = msg.fileSize;
+      }
+
+      const res = await fetch('http://localhost:5000/api/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(messageBody)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const savedMsg = data.message;
+
+        // Broadcast via socket
+        const socketPayload = {
+          _id: savedMsg._id,
+          senderId: ourId,
+          receiverId: targetChat.id,
+          content: savedMsg.content,
+          messageType: savedMsg.messageType,
+          imageUrl: savedMsg.imageUrl,
+          fileUrl: savedMsg.fileUrl,
+          fileName: savedMsg.fileName,
+          fileSize: savedMsg.fileSize,
+          createdAt: savedMsg.createdAt,
+          isForwarded: true
+        };
+        socket.emit('sendMessage', socketPayload);
+
+        if (selectedChat && selectedChat.id === targetChat.id) {
+          const localMsg = {
+            id: savedMsg._id,
+            _id: savedMsg._id,
+            sender: 'You',
+            content: savedMsg.content,
+            timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            isOwn: true,
+            read: savedMsg.status === 'seen',
+            avatar: currentUser?.avatar,
+            messageType: savedMsg.messageType,
+            imageUrl: savedMsg.imageUrl,
+            fileUrl: savedMsg.fileUrl,
+            fileName: savedMsg.fileName,
+            fileSize: savedMsg.fileSize,
+            status: savedMsg.status,
+            reactions: [],
+            isForwarded: true
+          };
+
+          setMessages(prev => ({
+            ...prev,
+            [targetChat.id]: [...(prev[targetChat.id] || []), localMsg]
+          }));
+        }
+
+        let previewText = "Sent an attachment";
+        if (savedMsg.messageType === 'text' || !savedMsg.messageType) {
+          previewText = savedMsg.content;
+        } else if (savedMsg.messageType === 'image') {
+          previewText = "📷 Image";
+        } else if (savedMsg.messageType === 'file') {
+          previewText = `📄 ${savedMsg.fileName || "Document"}`;
+        }
+
+        setChats(prevChats => {
+          const updated = prevChats.map(c => 
+            c.id === targetChat.id 
+              ? { 
+                  ...c, 
+                  lastMessage: `↪ ${previewText}`, 
+                  lastMessageTime: savedMsg.createdAt,
+                  timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+                }
+              : c
+          );
+          return [...updated].sort((a, b) => {
+            const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+            const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+            return timeB - timeA;
+          });
+        });
+      }
+    } catch (err) {
+      console.error("Forward message failed:", err);
+    } finally {
+      setShowForwardModal(false);
+      setForwardingMessage(null);
+    }
+  };
+
+  const handleSendMessage = async (content, attachment = null, replyToId = null, isForwarded = false) => {
     if (!selectedChat) return;
 
     try {
       const token = localStorage.getItem('token');
       const messageBody = {
         receiverId: selectedChat.id,
-        content: content || ""
+        content: content || "",
+        replyTo: replyToId,
+        isForwarded
       };
 
       if (attachment) {
@@ -417,7 +631,9 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           fileUrl: savedMsg.fileUrl,
           fileName: savedMsg.fileName,
           fileSize: savedMsg.fileSize,
-          createdAt: savedMsg.createdAt
+          createdAt: savedMsg.createdAt,
+          replyTo: savedMsg.replyTo,
+          isForwarded: savedMsg.isForwarded
         };
         socket.emit('sendMessage', socketPayload);
 
@@ -437,7 +653,9 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           fileName: savedMsg.fileName,
           fileSize: savedMsg.fileSize,
           status: savedMsg.status,
-          reactions: []
+          reactions: [],
+          replyTo: savedMsg.replyTo,
+          isForwarded: savedMsg.isForwarded
         };
 
         setMessages(prev => ({
@@ -455,11 +673,23 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           previewText = `📄 ${savedMsg.fileName || "Document"}`;
         }
 
-        setChats(prevChats => prevChats.map(c => 
-          c.id === selectedChat.id 
-            ? { ...c, lastMessage: previewText, timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) }
-            : c
-        ));
+        setChats(prevChats => {
+          const updated = prevChats.map(c => 
+            c.id === selectedChat.id 
+              ? { 
+                  ...c, 
+                  lastMessage: previewText, 
+                  lastMessageTime: savedMsg.createdAt,
+                  timestamp: new Date(savedMsg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) 
+                }
+              : c
+          );
+          return [...updated].sort((a, b) => {
+            const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+            const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+            return timeB - timeA;
+          });
+        });
       }
     } catch (err) {
       console.error('Send message failed:', err);
@@ -473,6 +703,10 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   }));
 
   const currentMessages = selectedChat ? (messages[selectedChat.id] || []) : [];
+  const filteredMessages = currentMessages.filter(msg => {
+    if (!searchMessageQuery) return true;
+    return msg.content?.toLowerCase().includes(searchMessageQuery.toLowerCase());
+  });
 
   return (
     <div className={`h-screen flex bg-white dark:bg-darkBg overflow-hidden ${darkMode ? 'dark' : ''}`}>
@@ -565,7 +799,24 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                 isTyping={isTyping}
                 onClose={() => setSelectedChat(null)}
                 onOpenProfile={() => setShowProfileModal(true)}
+                searchMessageQuery={searchMessageQuery}
+                setSearchMessageQuery={setSearchMessageQuery}
+                showMessageSearch={showMessageSearch}
+                setShowMessageSearch={setShowMessageSearch}
               />
+
+              {/* Message Search Count Bar */}
+              {showMessageSearch && searchMessageQuery && (
+                <div className="bg-blue-50 dark:bg-blue-900/10 px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-300 flex items-center justify-between select-none font-semibold text-left">
+                  <span>Found {filteredMessages.length} matching messages</span>
+                  <button 
+                    onClick={() => setSearchMessageQuery('')}
+                    className="text-primary hover:underline font-bold"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
 
               {/* Messages */}
               <motion.div
@@ -574,11 +825,11 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                 className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900"
               >
                 <div className="max-w-3xl mx-auto space-y-4">
-                  {currentMessages.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-center">
+                  {filteredMessages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-center py-20">
                       <div>
-                        <p className="text-gray-500 dark:text-gray-400 text-lg">
-                          No messages yet. Start the conversation!
+                        <p className="text-gray-500 dark:text-gray-400 text-base">
+                          {searchMessageQuery ? 'No messages match your search' : 'No messages yet. Start the conversation!'}
                         </p>
                       </div>
                     </div>
@@ -593,7 +844,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                         <div className="flex-1 border-t border-gray-300 dark:border-gray-700"></div>
                       </div>
 
-                      {currentMessages.map((msg, index) => (
+                      {filteredMessages.map((msg, index) => (
                         <MessageBubble
                           key={msg.id || index}
                           message={msg}
@@ -601,6 +852,13 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                           onReact={handleReact}
                           onImageClick={setLightboxUrl}
                           currentUserId={ourId}
+                          onReply={(m) => setReplyingMessage(m)}
+                          onForward={(m) => {
+                            setForwardingMessage(m);
+                            setShowForwardModal(true);
+                          }}
+                          onDelete={(m) => setDeleteModalMsg(m)}
+                          searchQuery={searchMessageQuery}
                         />
                       ))}
 
@@ -632,6 +890,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                 onSendMessage={handleSendMessage}
                 onTyping={handleTyping}
                 onStopTyping={handleStopTyping}
+                replyingTo={replyingMessage}
+                onCancelReply={() => setReplyingMessage(null)}
               />
             </motion.div>
           ) : (
@@ -651,6 +911,115 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             }}
             onClose={() => setShowProfileModal(false)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Delete Message Dialog */}
+      <AnimatePresence>
+        {deleteModalMsg && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-gray-805 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-150 dark:border-gray-700"
+            >
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 text-left">
+                Delete Message?
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-6 text-left leading-relaxed">
+                Are you sure you want to delete this message? This action cannot be undone.
+              </p>
+              <div className="flex flex-col gap-2">
+                {(deleteModalMsg.isOwn || deleteModalMsg.sender === 'You') && (
+                  <button
+                    onClick={() => executeDeleteMessage(deleteModalMsg, 'everyone')}
+                    className="w-full py-2 bg-red-650 hover:bg-red-750 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Delete for Everyone
+                  </button>
+                )}
+                <button
+                  onClick={() => executeDeleteMessage(deleteModalMsg, 'me')}
+                  className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-650 text-gray-950 dark:text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Delete for Me
+                </button>
+                <button
+                  onClick={() => setDeleteModalMsg(null)}
+                  className="w-full py-2 text-gray-500 hover:text-gray-750 dark:text-gray-450 text-xs font-semibold transition-colors mt-1 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Forward Message Modal */}
+      <AnimatePresence>
+        {showForwardModal && forwardingMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/55 z-55 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-gray-150 dark:border-gray-700 max-h-[80vh] flex flex-col"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-md font-bold text-gray-905 dark:text-white">
+                  Forward Message
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowForwardModal(false);
+                    setForwardingMessage(null);
+                  }}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full text-gray-500 transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[45vh]">
+                {chats.map(chat => (
+                  <div
+                    key={chat.id}
+                    onClick={() => executeForwardMessage(chat, forwardingMessage)}
+                    className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/60 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <img
+                      src={chat.avatar}
+                      alt={chat.name}
+                      className="w-10 h-10 rounded-full object-cover border border-gray-100 dark:border-gray-800"
+                    />
+                    <div className="min-w-0 flex-1 text-left">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                        {chat.name}
+                      </p>
+                      <p className="text-[10px] text-gray-550 dark:text-gray-400 truncate">
+                        @{chat.username}
+                      </p>
+                    </div>
+                    <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full select-none cursor-pointer">
+                      Send
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

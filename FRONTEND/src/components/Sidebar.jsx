@@ -10,7 +10,7 @@ const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onTogg
   const [searchQuery, setSearchQuery] = useState('');
   const [showMenu, setShowMenu] = useState(false);
 
-  const unreadCount = chats.reduce((sum, chat) => sum + chat.unread, 0);
+  const unreadCount = chats.reduce((sum, chat) => sum + (chat.unread || chat.unreadCount || 0), 0);
 
   return (
     <motion.div
@@ -117,11 +117,13 @@ const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onTogg
 
         {/* Tabs */}
         <div className="flex gap-2 mt-3">
-          <button className="px-3 py-1 bg-primary text-white text-sm rounded-full">
-            All ({chats.length})
-          </button>
-          <button className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-full">
-            Unread ({unreadCount})
+          <button className="px-3.5 py-1.5 bg-primary text-white text-xs font-semibold rounded-full shadow-sm flex items-center gap-1.5">
+            All Chats
+            {unreadCount > 0 && (
+              <span className="bg-white text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                {unreadCount}
+              </span>
+            )}
           </button>
         </div>
       </div>

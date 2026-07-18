@@ -3,7 +3,14 @@ import { create } from 'zustand';
 export const useAppStore = create((set) => ({
   currentPage: 'welcome',
   darkMode: false,
-  currentUser: null,
+  currentUser: (() => {
+    try {
+      const u = localStorage.getItem('user');
+      return u ? JSON.parse(u) : null;
+    } catch (e) {
+      return null;
+    }
+  })(),
 
   navigateTo: (page) => set({ currentPage: page }),
   toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),

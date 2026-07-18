@@ -112,7 +112,10 @@ const loginUser = async (req, res) => {
         _id: user._id,
         name: user.name,
         username: user.username,
-        email: user.email
+        email: user.email,
+        avatar: user.avatar || "",
+        bio: user.bio || "",
+        phone: user.phone || ""
       }
     });
 

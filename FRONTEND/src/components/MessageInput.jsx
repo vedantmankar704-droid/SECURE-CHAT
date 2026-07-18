@@ -3,7 +3,7 @@ import { Send, Paperclip, Smile, X, Image, File, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmojiPicker from './EmojiPicker';
 
-const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
+const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCancelReply }) => {
   const [message, setMessage] = useState('');
   const [rows, setRows] = useState(1);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -138,7 +138,8 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
       }
     }
 
-    onSendMessage(message, attachmentPayload);
+    onSendMessage(message, attachmentPayload, replyingTo ? (replyingTo._id || replyingTo.id) : null);
+    if (onCancelReply) onCancelReply();
     
     // Reset layout inputs
     setMessage('');
@@ -164,6 +165,34 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping }) => {
       animate={{ opacity: 1, y: 0 }}
       className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 relative"
     >
+      {/* Replying Preview Container */}
+      <AnimatePresence>
+        {replyingTo && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-2.5 p-2 bg-gray-50 dark:bg-gray-700/50 border-l-4 border-primary flex items-center justify-between gap-3 text-xs select-none relative overflow-hidden rounded-r-lg"
+          >
+            <div className="min-w-0 flex-1 text-left">
+              <p className="font-semibold text-primary mb-0.5 truncate text-[11px]">
+                Replying to {replyingTo.sender === 'You' || replyingTo.isOwn ? 'Yourself' : replyingTo.sender}
+              </p>
+              <p className="text-gray-550 dark:text-gray-300 truncate">
+                {replyingTo.messageType === 'image' ? '📷 Image' : replyingTo.messageType === 'file' ? `📄 ${replyingTo.fileName || 'Document'}` : replyingTo.content}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onCancelReply}
+              className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-500 rounded-full transition-colors flex-shrink-0"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Emoji Picker Box */}
       <AnimatePresence>
         {showEmojiPicker && (
