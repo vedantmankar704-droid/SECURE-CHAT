@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, CheckCheck, FileText, Download, MoreHorizontal, CornerUpLeft, ArrowRight, Trash2 } from 'lucide-react';
 
@@ -15,6 +15,8 @@ const MessageBubble = ({
   scrollToMessage
 }) => {
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const triggerRef = useRef(null);
+  const [menuCoords, setMenuCoords] = useState({ top: 0, left: 0, transformOrigin: 'top right' });
 
   const bubbleVariants = {
     initial: { opacity: 0, y: 10 },
@@ -64,6 +66,54 @@ const MessageBubble = ({
     );
   };
 
+  // Auto-close actions menu on scroll to prevent layout drift
+  useEffect(() => {
+    if (showActionsMenu) {
+      const handleScroll = () => setShowActionsMenu(false);
+      window.addEventListener('scroll', handleScroll, true);
+      return () => window.removeEventListener('scroll', handleScroll, true);
+    }
+  }, [showActionsMenu]);
+
+  // Compute smart viewport coordinates on menu open
+  const handleOpenMenu = () => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    
+    const menuWidth = 176;
+    const menuHeight = 180; // Approximated max height of the menu
+
+    let top = rect.bottom + 6;
+    let left = isOwnMessage ? (rect.right - menuWidth) : rect.left;
+    let originY = 'top';
+    let originX = isOwnMessage ? 'right' : 'left';
+
+    // 1. Vertical Space Check
+    if (rect.bottom + menuHeight > window.innerHeight - 20) {
+      top = rect.top - menuHeight - 6;
+      originY = 'bottom';
+    }
+
+    // 2. Horizontal Space Check
+    if (left < 10) {
+      left = 10;
+      originX = 'left';
+    } else if (left + menuWidth > window.innerWidth - 10) {
+      left = window.innerWidth - menuWidth - 10;
+      originX = 'right';
+    }
+
+    // 3. Keep layout bounded within safe viewport vertical margins
+    top = Math.max(10, Math.min(top, window.innerHeight - menuHeight - 10));
+
+    setMenuCoords({
+      top,
+      left,
+      transformOrigin: `${originY} ${originX}`
+    });
+    setShowActionsMenu(true);
+  };
+
   return (
     <motion.div
       id={`msg-${message._id || message.id}`}
@@ -90,8 +140,9 @@ const MessageBubble = ({
             {/* Options Menu Trigger on Hover */}
             {!(message.isDeleted || message.deletedForEveryone) && (
               <button
+                ref={triggerRef}
                 type="button"
-                onClick={() => setShowActionsMenu(!showActionsMenu)}
+                onClick={handleOpenMenu}
                 className={`absolute ${isOwnMessage ? 'left-[-32px]' : 'right-[-32px]'} top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 focus:opacity-100 transition-opacity duration-200 p-1 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 rounded-full shadow-md border border-gray-200 dark:border-gray-700 z-20 cursor-pointer`}
               >
                 <MoreHorizontal size={14} />
@@ -104,16 +155,23 @@ const MessageBubble = ({
                 <>
                   {/* Backdrop for click outside */}
                   <div 
-                    className="fixed inset-0 z-25 cursor-default" 
+                    className="fixed inset-0 z-45 cursor-default" 
                     onClick={() => setShowActionsMenu(false)}
                   />
                   
                   <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                    transition={{ duration: 0.15 }}
-                    className={`absolute ${isOwnMessage ? 'right-0' : 'left-0'} top-full mt-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-750 rounded-2xl shadow-xl p-2 z-30 w-44 font-sans text-left`}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.12 }}
+                    style={{
+                      position: 'fixed',
+                      top: `${menuCoords.top}px`,
+                      left: `${menuCoords.left}px`,
+                      transformOrigin: menuCoords.transformOrigin,
+                      width: '176px'
+                    }}
+                    className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-750 rounded-2xl shadow-xl p-2 z-50 font-sans text-left"
                   >
                     {/* Emoji Reaction Row (React with Emoji) */}
                     <div className="flex items-center justify-between px-1 py-1 border-b border-gray-100 dark:border-gray-700/60 mb-1.5">
@@ -147,7 +205,7 @@ const MessageBubble = ({
                         if (onForward) onForward(message);
                         setShowActionsMenu(false);
                       }}
-                      className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-gray-750 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                      className="w-full px-2.5 py-1.5 text-left text-xs font-semibold text-gray-755 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
                     >
                       <ArrowRight size={13} className="text-gray-500" /> Forward
                     </button>
@@ -189,7 +247,7 @@ const MessageBubble = ({
                 <div 
                   onClick={() => scrollToMessage && scrollToMessage(message.replyTo._id || message.replyTo.id)}
                   className={`mb-2 p-2 border-l-4 border-primary rounded text-xs select-none text-left opacity-90 max-w-full cursor-pointer hover:opacity-100 transition-opacity ${
-                    isOwnMessage ? 'bg-white/10 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-805 dark:text-gray-200'
+                    isOwnMessage ? 'bg-white/10 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-850 dark:text-gray-200'
                   }`}
                 >
                   <p className={`font-bold text-[11px] mb-0.5 truncate ${isOwnMessage ? 'text-blue-100' : 'text-primary'}`}>
@@ -233,7 +291,7 @@ const MessageBubble = ({
                       <FileText size={20} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className={`text-xs font-bold truncate ${isOwnMessage ? 'text-white' : 'text-gray-950 dark:text-white'}`}>
+                      <p className={`text-xs font-bold truncate ${isOwnMessage ? 'text-white' : 'text-gray-955 dark:text-white'}`}>
                         {message.fileName || message.file || 'attachment'}
                       </p>
                       <p className={`text-[10px] ${isOwnMessage ? 'text-blue-150' : 'text-gray-500 dark:text-gray-400'}`}>
