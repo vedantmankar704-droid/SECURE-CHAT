@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CheckCheck, FileText, Download, MoreHorizontal, CornerUpLeft, ArrowRight, Trash2 } from 'lucide-react';
+import { Check, CheckCheck, FileText, Download, MoreHorizontal, CornerUpLeft, ArrowRight, Trash2, Ban } from 'lucide-react';
 
 const MessageBubble = ({ 
   message, 
@@ -226,7 +226,7 @@ const MessageBubble = ({
             <div
               className={`message-bubble overflow-hidden transition-all hover:shadow-md ${
                 (message.isDeleted || message.deletedForEveryone)
-                  ? 'bg-gray-150 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700/50 p-3'
+                  ? 'bg-gray-100/60 dark:bg-gray-800/65 text-gray-500 dark:text-gray-400 border border-gray-200/50 dark:border-gray-700/35'
                   : isOwnMessage
                     ? 'outgoing'
                     : 'incoming'
@@ -260,10 +260,12 @@ const MessageBubble = ({
               )}
 
               {(message.isDeleted || message.deletedForEveryone) ? (
-                <p className="text-sm italic text-gray-500 dark:text-gray-400 flex items-center gap-1.5 select-none">
-                  <Trash2 size={13} className="opacity-60" />
-                  <span>This message was deleted</span>
-                </p>
+                <div className="flex items-center gap-1.5 select-none opacity-80 py-0.5">
+                  <Ban size={14} className="text-gray-400 dark:text-gray-550 flex-shrink-0" />
+                  <span className="text-xs italic font-medium leading-none">
+                    {isOwnMessage ? 'You deleted this message' : 'This message was deleted'}
+                  </span>
+                </div>
               ) : message.messageType === 'image' || message.imageUrl ? (
                 <div className="flex flex-col gap-2">
                   <img

@@ -203,7 +203,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
       setChats(prevChats => prevChats.map(c => 
         (c.id === partnerId || c._id === partnerId) 
-          ? { ...c, lastMessage: "This message was deleted" }
+          ? { ...c, lastMessage: "🚫 This message was deleted" }
           : c
       ));
     };
@@ -473,7 +473,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           });
 
           setChats(prevChats => prevChats.map(c => 
-            c.id === selectedChat.id ? { ...c, lastMessage: "This message was deleted" } : c
+            c.id === selectedChat.id ? { ...c, lastMessage: "🚫 You deleted this message" } : c
           ));
           setToast({ type: 'success', message: 'Message deleted for everyone' });
         } else {

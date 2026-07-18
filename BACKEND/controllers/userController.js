@@ -20,7 +20,7 @@ const getUsers = async (req, res) => {
           { sender: loggedInUserId, receiver: u._id },
           { sender: u._id, receiver: loggedInUserId }
         ],
-        deletedBy: { $ne: loggedInUserId }
+        deletedForUsers: { $ne: loggedInUserId }
       }).sort({ createdAt: -1 });
 
       // Count unread messages sent by u._id to loggedInUserId
@@ -32,8 +32,12 @@ const getUsers = async (req, res) => {
 
       let previewText = 'Click to start chatting';
       if (latestMessage) {
-        if (latestMessage.isDeletedForEveryone) {
-          previewText = 'This message was deleted';
+        if (latestMessage.isDeleted || latestMessage.deletedForEveryone) {
+          if (latestMessage.sender.toString() === loggedInUserId.toString()) {
+            previewText = '🚫 You deleted this message';
+          } else {
+            previewText = '🚫 This message was deleted';
+          }
         } else if (latestMessage.messageType === 'image') {
           previewText = '📷 Image';
         } else if (latestMessage.messageType === 'file') {
