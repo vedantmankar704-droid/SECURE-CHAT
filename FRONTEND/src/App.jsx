@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
+import Requests from './pages/Requests';
 import { useAppStore } from './store/appStore';
 import socket from './socket/socket';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -115,6 +116,13 @@ function App() {
               darkMode={darkMode}
               onToggleDarkMode={toggleDarkMode}
             />
+          </ProtectedRoute>
+        );
+      case 'requests':
+      case 'new-chat':
+        return (
+          <ProtectedRoute>
+            <Requests onNavigate={navigateTo} />
           </ProtectedRoute>
         );
       case 'profile':

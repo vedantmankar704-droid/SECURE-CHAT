@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const FriendRequest = require('../models/FriendRequest');
 
 let io;
 const userSocketMap = {}; // userId -> socketId in-memory Map
@@ -100,8 +101,20 @@ const initSocket = (server) => {
         return;
       }
 
-      // Check block status before forwarding
+      // Check friendship and block status before forwarding
       try {
+        const friendship = await FriendRequest.findOne({
+          status: 'accepted',
+          $or: [
+            { sender: senderId, receiver: receiverId },
+            { sender: receiverId, receiver: senderId }
+          ]
+        });
+        if (!friendship) {
+          console.log('[Socket] Message blocked: Not accepted friends');
+          return;
+        }
+
         const senderDoc = await User.findById(senderId).select('blockedUsers');
         const receiverDoc = await User.findById(receiverId).select('blockedUsers');
         if (senderDoc?.blockedUsers?.map(id => id.toString()).includes(receiverId.toString()) ||
@@ -110,7 +123,7 @@ const initSocket = (server) => {
           return;
         }
       } catch (err) {
-        console.error('Socket block validation check failed:', err);
+        console.error('Socket block/friendship validation check failed:', err);
       }
 
       const receiverSocketId = getReceiverSocketId(receiverId);
@@ -158,6 +171,7 @@ const initSocket = (server) => {
 
     // Listen for typing events
     socket.on('typing', async ({ senderId, receiverId }) => {
+      console.log(`[Socket Server] typing event from ${senderId} to ${receiverId}`);
       try {
         const receiverDoc = await User.findById(receiverId).select('blockedUsers');
         const senderDoc = await User.findById(senderId).select('blockedUsers');
@@ -174,6 +188,7 @@ const initSocket = (server) => {
 
     // Listen for stopTyping events
     socket.on('stopTyping', async ({ senderId, receiverId }) => {
+      console.log(`[Socket Server] stopTyping event from ${senderId} to ${receiverId}`);
       try {
         const receiverDoc = await User.findById(receiverId).select('blockedUsers');
         const senderDoc = await User.findById(senderId).select('blockedUsers');

@@ -34,15 +34,15 @@ const TypingIndicator = () => {
     >
       <motion.div
         variants={dotVariants}
-        className="w-1.5 h-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"
+        className="w-1.5 h-1.5 bg-primary rounded-full"
       />
       <motion.div
         variants={dotVariants}
-        className="w-1.5 h-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"
+        className="w-1.5 h-1.5 bg-primary rounded-full"
       />
       <motion.div
         variants={dotVariants}
-        className="w-1.5 h-1.5 bg-gray-500 dark:bg-gray-400 rounded-full"
+        className="w-1.5 h-1.5 bg-primary rounded-full"
       />
     </motion.div>
   );

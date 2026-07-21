@@ -1,7 +1,8 @@
 const User = require('../models/User');
 const Message = require('../models/Message');
+const FriendRequest = require('../models/FriendRequest');
 
-// @desc    Get all users except current logged-in user
+// @desc    Get accepted friends (for chat list)
 // @route   GET /api/users
 // @access  Private
 const getUsers = async (req, res) => {
@@ -12,8 +13,21 @@ const getUsers = async (req, res) => {
     const currentUserDoc = await User.findById(loggedInUserId).select('blockedUsers');
     const blockedList = currentUserDoc?.blockedUsers?.map(id => id.toString()) || [];
 
-    // Find all users except the current logged-in user
-    const users = await User.find({ _id: { $ne: loggedInUserId } })
+    // Find accepted friend requests involving loggedInUserId
+    const acceptedRequests = await FriendRequest.find({
+      status: 'accepted',
+      $or: [
+        { sender: loggedInUserId },
+        { receiver: loggedInUserId }
+      ]
+    });
+
+    const friendIds = acceptedRequests.map(r => 
+      r.sender.toString() === loggedInUserId.toString() ? r.receiver : r.sender
+    );
+
+    // Find users who are accepted friends
+    const users = await User.find({ _id: { $in: friendIds } })
       .select('_id name username avatar isOnline lastSeen bio phone blockedUsers publicKey');
 
     // Fetch latest message and unread count for each user

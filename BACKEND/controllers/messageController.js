@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const Chat = require('../models/Chat');
 const User = require('../models/User');
+const FriendRequest = require('../models/FriendRequest');
 const { getReceiverSocketId, getIO } = require('../socket/socket');
 
 // @desc    Send a message to a user
@@ -37,6 +38,22 @@ const sendMessage = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Receiver ID is required"
+      });
+    }
+
+    // Verify friendship status
+    const friendship = await FriendRequest.findOne({
+      status: 'accepted',
+      $or: [
+        { sender: senderId, receiver: receiverId },
+        { sender: receiverId, receiver: senderId }
+      ]
+    });
+
+    if (!friendship) {
+      return res.status(403).json({
+        success: false,
+        message: "You must be accepted friends to send messages"
       });
     }
 

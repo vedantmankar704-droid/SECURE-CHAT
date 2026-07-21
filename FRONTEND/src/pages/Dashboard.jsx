@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
@@ -33,9 +33,38 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [deleteModalMsg, setDeleteModalMsg] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState(null);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   const ourId = currentUser?.id || currentUser?._id;
   const { updateCurrentUser } = useAppStore();
+
+  const selectedChatRef = useRef(selectedChat);
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+    console.log('[State Change] isTyping updated to: false (Chat selection changed)');
+    setIsTyping(false);
+  }, [selectedChat]);
+
+  const updateIsTyping = (val) => {
+    console.log('[State Change] isTyping updated to:', val);
+    setIsTyping(val);
+  };
+
+  const handleTyping = () => {
+    if (selectedChatRef.current && ourId) {
+      const partnerId = selectedChatRef.current.id || selectedChatRef.current._id;
+      console.log('typing event sent:', { senderId: ourId, receiverId: partnerId });
+      socket.emit('typing', { senderId: ourId, receiverId: partnerId });
+    }
+  };
+
+  const handleStopTyping = () => {
+    if (selectedChatRef.current && ourId) {
+      const partnerId = selectedChatRef.current.id || selectedChatRef.current._id;
+      console.log('stopTyping event sent:', { senderId: ourId, receiverId: partnerId });
+      socket.emit('stopTyping', { senderId: ourId, receiverId: partnerId });
+    }
+  };
 
   // E2EE Key Initialization
   useEffect(() => {
@@ -131,48 +160,64 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     return await Promise.all(msgs.map(m => decryptSingleMessage(m)));
   };
 
-  // Fetch users on mount
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/users', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          const normalizedUsers = data.users.map(u => ({
-            id: u._id,
-            name: u.name,
-            username: u.username,
-            avatar: u.avatar || 'https://i.pravatar.cc/150?img=10',
-            isOnline: false,
-            lastMessage: u.lastMessage || 'Click to start chatting',
-            timestamp: '',
-            lastSeen: u.lastSeen,
-            lastMessageTime: u.lastMessageTime,
-            unread: u.unreadCount || 0,
-            email: u.email || `${u.username}@example.com`,
-            phone: u.phone || 'No phone provided',
-            bio: u.bio || 'Hello, I am using Secure Chat!',
-            isBlocked: u.isBlocked || false,
-            hasBlockedUs: u.hasBlockedUs || false
-          })).sort((a, b) => {
-            const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
-            const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
-            return timeB - timeA;
-          });
-          setChats(normalizedUsers);
+  // Fetch friends and pending requests on mount
+  const fetchFriends = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/friends', {
+        headers: {
+          'Authorization': `Bearer ${token}`
         }
-      } catch (err) {
-        console.error('Fetch users failed:', err);
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const normalizedUsers = (data.friends || []).map(u => ({
+          id: u._id,
+          name: u.name,
+          username: u.username,
+          avatar: u.avatar || 'https://i.pravatar.cc/150?img=10',
+          isOnline: false,
+          lastMessage: u.lastMessage || 'Click to start chatting',
+          timestamp: '',
+          lastSeen: u.lastSeen,
+          lastMessageTime: u.lastMessageTime,
+          unread: u.unreadCount || 0,
+          email: u.email || `${u.username}@example.com`,
+          phone: u.phone || 'No phone provided',
+          bio: u.bio || 'Hello, I am using Secure Chat!',
+          isBlocked: u.isBlocked || false,
+          hasBlockedUs: u.hasBlockedUs || false
+        })).sort((a, b) => {
+          const timeA = a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : 0;
+          const timeB = b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : 0;
+          return timeB - timeA;
+        });
+        setChats(normalizedUsers);
       }
-    };
-
-    fetchUsers();
+    } catch (err) {
+      console.error('Fetch friends failed:', err);
+    }
   }, []);
+
+  const fetchPendingCount = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/friends/requests', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPendingRequestsCount((data.incoming || []).length);
+      }
+    } catch (err) {
+      console.error('Fetch pending requests count failed:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFriends();
+    fetchPendingCount();
+  }, [fetchFriends, fetchPendingCount]);
 
   // Auto-dismiss toast notification after 3 seconds
   useEffect(() => {
@@ -394,6 +439,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
       // Mark seen immediately if active conversation panel is open
       if (isCurrentChat) {
+        updateIsTyping(false);
         const token = localStorage.getItem('token');
         fetch(`http://localhost:5000/api/messages/seen/${partnerId}`, {
           method: 'PUT',
@@ -434,15 +480,29 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
     // Typing Event handlers
     const handleTypingEvent = ({ senderId }) => {
-      if (selectedChat && selectedChat.id === senderId) {
-        setIsTyping(true);
+      const currentSelectedId = selectedChatRef.current?.id || selectedChatRef.current?._id;
+      console.log('typing event received:', { senderId, currentSelectedChatId: currentSelectedId });
+      if (currentSelectedId && currentSelectedId.toString() === senderId.toString()) {
+        updateIsTyping(true);
       }
     };
 
     const handleStopTypingEvent = ({ senderId }) => {
-      if (selectedChat && selectedChat.id === senderId) {
-        setIsTyping(false);
+      const currentSelectedId = selectedChatRef.current?.id || selectedChatRef.current?._id;
+      console.log('stopTyping event received:', { senderId, currentSelectedChatId: currentSelectedId });
+      if (currentSelectedId && currentSelectedId.toString() === senderId.toString()) {
+        updateIsTyping(false);
       }
+    };
+
+    const handleFriendRequestReceived = (payload) => {
+      setPendingRequestsCount(prev => prev + 1);
+      setToast({ message: `New friend request from @${payload.sender?.username || 'user'}`, type: 'success' });
+    };
+
+    const handleFriendRequestAccepted = (payload) => {
+      fetchFriends();
+      setToast({ message: `@${payload.user?.username || 'User'} accepted your friend request!`, type: 'success' });
     };
 
     // Socket registers
@@ -460,6 +520,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     socket.on('messageDeleted', handleMessageDeleted);
     socket.on('typing', handleTypingEvent);
     socket.on('stopTyping', handleStopTypingEvent);
+    socket.on('friendRequestReceived', handleFriendRequestReceived);
+    socket.on('friendRequestAccepted', handleFriendRequestAccepted);
 
     return () => {
       socket.off('getOnlineUsers', handleGetOnlineUsers);
@@ -476,6 +538,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       socket.off('messageDeleted', handleMessageDeleted);
       socket.off('typing', handleTypingEvent);
       socket.off('stopTyping', handleStopTypingEvent);
+      socket.off('friendRequestReceived', handleFriendRequestReceived);
+      socket.off('friendRequestAccepted', handleFriendRequestAccepted);
     };
   }, [currentUser, ourId, selectedChat]);
 
@@ -554,21 +618,6 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, selectedChat]);
-
-  // Reset typing state on panel transition
-  useEffect(() => {
-    setIsTyping(false);
-  }, [selectedChat]);
-
-  const handleTyping = () => {
-    if (!selectedChat || !ourId) return;
-    socket.emit('typing', { senderId: ourId, receiverId: selectedChat.id });
-  };
-
-  const handleStopTyping = () => {
-    if (!selectedChat || !ourId) return;
-    socket.emit('stopTyping', { senderId: ourId, receiverId: selectedChat.id });
-  };
 
   // Toggle emoji reactions
   const handleReact = async (messageId, emoji) => {
@@ -1039,6 +1088,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           onToggleDarkMode={onToggleDarkMode}
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
+          pendingRequestsCount={pendingRequestsCount}
         />
       </div>
 

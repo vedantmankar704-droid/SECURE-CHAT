@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Moon, Sun, LogOut, Settings, User } from 'lucide-react';
+import { UserPlus, Moon, Sun, LogOut, Settings, User } from 'lucide-react';
 import SearchBar from './SearchBar';
 import ChatList from './ChatList';
 import { useAppStore } from '../store/appStore';
 
-const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onToggleDarkMode, isMobileOpen, onCloseMobile }) => {
+const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onToggleDarkMode, isMobileOpen, onCloseMobile, pendingRequestsCount = 0 }) => {
   const { currentUser, updateCurrentUser } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showMenu, setShowMenu] = useState(false);
@@ -35,10 +35,14 @@ const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onTogg
             <motion.button
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => onNavigate('new-chat')}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              onClick={() => onNavigate('requests')}
+              title="Find Friends & Requests"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors relative"
             >
-              <Plus size={20} className="text-gray-700 dark:text-gray-300" />
+              <UserPlus size={20} className="text-gray-700 dark:text-gray-300" />
+              {pendingRequestsCount > 0 && (
+                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-primary rounded-full"></span>
+              )}
             </motion.button>
 
             <div className="relative">
@@ -61,6 +65,21 @@ const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onTogg
                   animate={{ opacity: 1, y: 0 }}
                   className="absolute right-0 mt-2 bg-white dark:bg-gray-700 rounded-lg shadow-lg py-2 z-50 w-48"
                 >
+                  <button
+                    onClick={() => {
+                      onNavigate('requests');
+                      setShowMenu(false);
+                      onCloseMobile();
+                    }}
+                    className="w-full px-4 py-2 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-between"
+                  >
+                    <span className="flex items-center gap-2"><UserPlus size={16} /> Friend Requests</span>
+                    {pendingRequestsCount > 0 && (
+                      <span className="bg-primary text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
+                        {pendingRequestsCount}
+                      </span>
+                    )}
+                  </button>
                   <button
                     onClick={() => {
                       onNavigate('profile');

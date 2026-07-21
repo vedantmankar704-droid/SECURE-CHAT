@@ -42,16 +42,24 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCan
       if (!isTypingRef.current && value.trim().length > 0) {
         isTypingRef.current = true;
         onTyping();
-      }
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-
-      typingTimeoutRef.current = setTimeout(() => {
+      } else if (isTypingRef.current && value.trim().length === 0) {
         isTypingRef.current = false;
         onStopTyping();
-      }, 2000);
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+      }
+
+      if (value.trim().length > 0) {
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+
+        typingTimeoutRef.current = setTimeout(() => {
+          isTypingRef.current = false;
+          onStopTyping();
+        }, 2000);
+      }
     }
 
     if (textareaRef.current) {
