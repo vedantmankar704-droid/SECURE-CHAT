@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { API_BASE_URL } from '../config/api';
 
 const Login = ({ onNavigate }) => {
   const { updateCurrentUser } = useAppStore();
@@ -17,7 +18,7 @@ const Login = ({ onNavigate }) => {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

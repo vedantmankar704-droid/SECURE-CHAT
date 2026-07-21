@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { MoreVertical, Search, X } from 'lucide-react';
+import { MoreVertical, Search, X, ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import TypingIndicator from './TypingIndicator';
 
@@ -47,9 +47,10 @@ const ChatHeader = ({
         <div className="flex items-center gap-3 flex-1">
           <button
             onClick={onClose}
-            className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
+            className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full cursor-pointer"
+            title="Back to Chat List"
           >
-            <X size={20} className="text-gray-700 dark:text-gray-300" />
+            <ArrowLeft size={20} className="text-gray-700 dark:text-gray-300" />
           </button>
 
           <div

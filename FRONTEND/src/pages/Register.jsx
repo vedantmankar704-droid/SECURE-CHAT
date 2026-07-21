@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { User, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 const Register = ({ onNavigate }) => {
   const [formData, setFormData] = useState({
@@ -33,7 +34,7 @@ const Register = ({ onNavigate }) => {
     setLoading(true);
     try {
       const derivedUsername = formData.email.split('@')[0].toLowerCase() + Math.floor(Math.random() * 100);
-      const res = await fetch('http://localhost:5000/api/auth/register', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

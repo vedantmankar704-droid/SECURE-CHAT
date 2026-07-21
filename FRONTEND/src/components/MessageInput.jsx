@@ -3,6 +3,7 @@ import { Send, Paperclip, Smile, X, Image, File, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmojiPicker from './EmojiPicker';
 import { encryptFile, bufferToBase64 } from '../services/encryptionService';
+import { API_BASE_URL } from '../config/api';
 
 const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCancelReply, recipientPublicKey }) => {
   const [message, setMessage] = useState('');
@@ -156,7 +157,7 @@ const MessageInput = ({ onSendMessage, onTyping, onStopTyping, replyingTo, onCan
         formData.append('file', fileToUpload, selectedFile.name);
 
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5000/api/messages/upload', {
+        const res = await fetch(`${API_BASE_URL}/api/messages/upload`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`

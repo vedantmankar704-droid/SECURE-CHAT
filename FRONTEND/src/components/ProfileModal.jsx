@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Phone, Info, ShieldAlert, Ban, MessageSquare } from 'lucide-react';
 import ProfileSkeleton from './ProfileSkeleton';
+import { API_BASE_URL } from '../config/api';
 
 const ProfileModal = ({ chat, onClose, onMessage, onToggleBlock }) => {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
@@ -24,7 +25,7 @@ const ProfileModal = ({ chat, onClose, onMessage, onToggleBlock }) => {
     try {
       const token = localStorage.getItem('token');
       const endpoint = isBlocked ? 'unblock' : 'block';
-      const res = await fetch(`http://localhost:5000/api/users/${endpoint}/${chat.id || chat._id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/${endpoint}/${chat.id || chat._id}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import ChatHeader from '../components/ChatHeader';
 import MessageBubble from '../components/MessageBubble';
@@ -13,13 +13,13 @@ import socket from '../socket/socket';
 import { useAppStore } from '../store/appStore';
 import { initializeUserKeys, encryptMessagePayload, decryptMessage } from '../services/encryptionService';
 import { encryptMessage as aesEncryptMessage, decryptMessage as aesDecryptMessage } from '../utils/encryption';
+import { API_BASE_URL } from '../config/api';
 
 const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const { currentUser } = useAppStore();
   const [chats, setChats] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [messages, setMessages] = useState({});
   const messagesEndRef = useRef(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -81,7 +81,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         if (currentUser && currentUser.publicKey !== keys.publicKey) {
           console.log('Registering E2EE public key with backend...');
           const token = localStorage.getItem('token');
-          const res = await fetch('http://localhost:5000/api/auth/profile', {
+          const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -169,7 +169,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     setLoadingChats(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/friends', {
+      const res = await fetch(`${API_BASE_URL}/api/friends`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -209,7 +209,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const fetchPendingCount = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/friends/requests', {
+      const res = await fetch(`${API_BASE_URL}/api/friends/requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -448,7 +448,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       if (isCurrentChat) {
         updateIsTyping(false);
         const token = localStorage.getItem('token');
-        fetch(`http://localhost:5000/api/messages/seen/${partnerId}`, {
+        fetch(`${API_BASE_URL}/api/messages/seen/${partnerId}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -561,7 +561,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       setLoadingHistory(true);
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`http://localhost:5000/api/messages/${selectedChat.id}`, {
+        const res = await fetch(`${API_BASE_URL}/api/messages/${selectedChat.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -603,7 +603,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           });
 
           // Mark incoming unread conversation logs as seen
-          fetch(`http://localhost:5000/api/messages/seen/${selectedChat.id}`, {
+          fetch(`${API_BASE_URL}/api/messages/seen/${selectedChat.id}`, {
             method: 'PUT',
             headers: {
               'Authorization': `Bearer ${token}`
@@ -633,7 +633,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const handleReact = async (messageId, emoji) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/messages/${messageId}/react`, {
+      const res = await fetch(`${API_BASE_URL}/api/messages/${messageId}/react`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -664,7 +664,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     try {
       const token = localStorage.getItem('token');
       const msgId = msg._id || msg.id;
-      const res = await fetch(`http://localhost:5000/api/messages/${msgId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/messages/${msgId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -729,7 +729,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         messageBody.fileSize = msg.fileSize;
       }
 
-      const res = await fetch('http://localhost:5000/api/messages', {
+      const res = await fetch(`${API_BASE_URL}/api/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -917,7 +917,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         }
       }
 
-      const res = await fetch('http://localhost:5000/api/messages', {
+      const res = await fetch(`${API_BASE_URL}/api/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1061,36 +1061,10 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
         )}
       </AnimatePresence>
 
-      {/* Mobile Menu Toggle */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4 z-50 flex items-center justify-between h-16">
-        <h2 className="font-bold text-lg text-gray-900 dark:text-white">
-          {selectedChat ? selectedChat.name : 'Message'}
-        </h2>
-        <button
-          onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
-        >
-          {isMobileSidebarOpen ? (
-            <X size={20} className="text-gray-600 dark:text-gray-400" />
-          ) : (
-            <Menu size={20} className="text-gray-600 dark:text-gray-400" />
-          )}
-        </button>
-      </div>
-
-      {/* Mobile Overlay */}
-      {isMobileSidebarOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => setIsMobileSidebarOpen(false)}
-          className="fixed inset-0 bg-black bg-opacity-50 md:hidden z-30"
-        />
-      )}
-
-      {/* Sidebar */}
-      <div className={`${isMobileSidebarOpen ? 'block' : 'hidden'} md:flex md:flex-col w-full md:w-80 bg-white dark:bg-gray-800`}>
+      {/* Sidebar (Chat List) */}
+      <div className={`w-full md:w-80 h-full flex-shrink-0 bg-white dark:bg-darkSideBar border-r border-gray-200 dark:border-gray-700 ${
+        selectedChat ? 'hidden md:flex md:flex-col' : 'flex flex-col'
+      }`}>
         <Sidebar
           chats={chatsWithOnlineStatus}
           activeChat={selectedChat}
@@ -1098,15 +1072,15 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           onNavigate={onNavigate}
           darkMode={darkMode}
           onToggleDarkMode={onToggleDarkMode}
-          isMobileOpen={isMobileSidebarOpen}
-          onCloseMobile={() => setIsMobileSidebarOpen(false)}
           pendingRequestsCount={pendingRequestsCount}
           isLoadingChats={loadingChats}
         />
       </div>
 
-      {/* Chat Section */}
-      <div className="flex-1 flex flex-col h-full pt-16 md:pt-0">
+      {/* Main Chat Area */}
+      <div className={`flex-1 h-full bg-white dark:bg-darkBg ${
+        selectedChat ? 'flex flex-col' : 'hidden md:flex md:flex-col'
+      }`}>
         <AnimatePresence mode="wait">
           {selectedChat ? (
             <motion.div

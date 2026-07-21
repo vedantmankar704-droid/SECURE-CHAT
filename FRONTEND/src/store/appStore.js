@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { API_BASE_URL } from '../config/api';
 
 export const useAppStore = create((set) => ({
   currentPage: 'welcome',
@@ -7,7 +8,7 @@ export const useAppStore = create((set) => ({
     try {
       const u = localStorage.getItem('user');
       return u ? JSON.parse(u) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   })(),
@@ -24,7 +25,7 @@ export const useAppStore = create((set) => ({
     }
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/me', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

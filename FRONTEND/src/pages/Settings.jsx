@@ -5,6 +5,7 @@ import {
   ArrowLeft, Camera, Save, Loader2, LogOut, CheckCircle2, AlertCircle, X, ShieldAlert 
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
+import { API_BASE_URL } from '../config/api';
 
 const Settings = ({ onNavigate }) => {
   const { currentUser, updateCurrentUser, darkMode, toggleDarkMode } = useAppStore();
@@ -57,7 +58,7 @@ const Settings = ({ onNavigate }) => {
     setFetchingBlocked(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/users', {
+      const res = await fetch(`${API_BASE_URL}/api/users`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -76,7 +77,7 @@ const Settings = ({ onNavigate }) => {
   const handleUnblock = async (userId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`http://localhost:5000/api/users/unblock/${userId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/unblock/${userId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -97,7 +98,7 @@ const Settings = ({ onNavigate }) => {
     setSaveLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/auth/profile', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -156,7 +157,7 @@ const Settings = ({ onNavigate }) => {
       formData.append('avatar', file);
 
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/auth/upload-avatar', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/upload-avatar`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
@@ -192,9 +193,8 @@ const Settings = ({ onNavigate }) => {
     }
     setPassLoading(true);
     try {
-      // Simulate/Trigger password change endpoint
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/auth/change-password', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

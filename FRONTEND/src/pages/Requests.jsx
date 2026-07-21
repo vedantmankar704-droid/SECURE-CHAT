@@ -4,6 +4,7 @@ import { Search, UserPlus, UserCheck, UserX, Clock, ArrowLeft, Users, Check, X, 
 import { useAppStore } from '../store/appStore';
 import socket from '../socket/socket';
 import ChatListSkeleton from '../components/ChatListSkeleton';
+import { API_BASE_URL } from '../config/api';
 
 const Requests = ({ onNavigate }) => {
   const { currentUser } = useAppStore();
@@ -28,7 +29,7 @@ const Requests = ({ onNavigate }) => {
   const fetchPendingRequests = useCallback(async () => {
     setLoadingRequests(true);
     try {
-      const res = await fetch('http://localhost:5000/api/friends/requests', {
+      const res = await fetch(`${API_BASE_URL}/api/friends/requests`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -49,28 +50,22 @@ const Requests = ({ onNavigate }) => {
 
   // Socket listener for real-time friend request updates
   useEffect(() => {
-    const handleFriendRequestReceived = (payload) => {
-      showToast(`New friend request from @${payload.sender?.username || 'user'}`, 'info');
+    const handleFriendRequest = () => {
       fetchPendingRequests();
     };
 
-    const handleFriendRequestAccepted = (payload) => {
-      showToast(`@${payload.user?.username || 'User'} accepted your friend request!`, 'success');
-      fetchPendingRequests();
-    };
-
-    socket.on('friendRequestReceived', handleFriendRequestReceived);
-    socket.on('friendRequestAccepted', handleFriendRequestAccepted);
+    socket.on('friendRequestReceived', handleFriendRequest);
+    socket.on('friendRequestAccepted', handleFriendRequest);
 
     return () => {
-      socket.off('friendRequestReceived', handleFriendRequestReceived);
-      socket.off('friendRequestAccepted', handleFriendRequestAccepted);
+      socket.off('friendRequestReceived', handleFriendRequest);
+      socket.off('friendRequestAccepted', handleFriendRequest);
     };
   }, [fetchPendingRequests]);
 
-  // Handle Search API
+  // User Search
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    if (!searchQuery || searchQuery.trim() === '') {
       setSearchResults([]);
       setIsSearching(false);
       return;
@@ -79,7 +74,7 @@ const Requests = ({ onNavigate }) => {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`http://localhost:5000/api/friends/search?query=${encodeURIComponent(searchQuery)}`, {
+        const res = await fetch(`${API_BASE_URL}/api/friends/search?query=${encodeURIComponent(searchQuery)}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
@@ -100,7 +95,7 @@ const Requests = ({ onNavigate }) => {
   const handleSendRequest = async (receiverId) => {
     setActionLoading(prev => ({ ...prev, [receiverId]: true }));
     try {
-      const res = await fetch('http://localhost:5000/api/friends/request', {
+      const res = await fetch(`${API_BASE_URL}/api/friends/request`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +123,7 @@ const Requests = ({ onNavigate }) => {
   const handleAcceptRequest = async (requestId, userId) => {
     setActionLoading(prev => ({ ...prev, [requestId]: true }));
     try {
-      const res = await fetch(`http://localhost:5000/api/friends/accept/${requestId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/friends/accept/${requestId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -151,7 +146,7 @@ const Requests = ({ onNavigate }) => {
   const handleDeclineRequest = async (requestId, userId) => {
     setActionLoading(prev => ({ ...prev, [requestId]: true }));
     try {
-      const res = await fetch(`http://localhost:5000/api/friends/decline/${requestId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/friends/decline/${requestId}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
