@@ -1,12 +1,21 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Phone, Info, ShieldAlert, Ban, MessageSquare } from 'lucide-react';
+import ProfileSkeleton from './ProfileSkeleton';
 
 const ProfileModal = ({ chat, onClose, onMessage, onToggleBlock }) => {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  if (!chat) return null;
+  if (!chat) {
+    return (
+      <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <ProfileSkeleton />
+        </div>
+      </div>
+    );
+  }
 
   const isBlocked = chat.isBlocked;
 

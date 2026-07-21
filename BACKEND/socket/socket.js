@@ -2,6 +2,7 @@ const { Server } = require('socket.io');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const FriendRequest = require('../models/FriendRequest');
+const { decryptMessage } = require('../utils/encryption');
 
 let io;
 const userSocketMap = {}; // userId -> socketId in-memory Map
@@ -133,7 +134,7 @@ const initSocket = (server) => {
         _id,
         sender: senderId,
         receiver: receiverId,
-        content: content || "",
+        content: content ? decryptMessage(content) : "",
         messageType: messageType || "text",
         imageUrl: imageUrl || "",
         fileUrl: fileUrl || "",

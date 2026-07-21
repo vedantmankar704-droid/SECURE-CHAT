@@ -3,6 +3,7 @@ const Chat = require('../models/Chat');
 const User = require('../models/User');
 const FriendRequest = require('../models/FriendRequest');
 const { getReceiverSocketId, getIO } = require('../socket/socket');
+const { encryptMessage, decryptMessage } = require('../utils/encryption');
 
 // @desc    Send a message to a user
 // @route   POST /api/messages
@@ -29,10 +30,6 @@ const sendMessage = async (req, res) => {
       encryptedFileName
     } = req.body;
     const senderId = req.user;
-
-    console.log("[Controller] Sending message:");
-    console.log("Current User (Sender):", senderId);
-    console.log("Receiver ID:", receiverId);
 
     if (!receiverId) {
       return res.status(400).json({
@@ -79,11 +76,14 @@ const sendMessage = async (req, res) => {
     const receiverSocketId = getReceiverSocketId(receiverId.toString());
     const initialStatus = receiverSocketId ? 'delivered' : 'sent';
 
+    // Encrypt content before saving to MongoDB
+    const encryptedContent = content ? encryptMessage(content) : "";
+
     // 1. Save the message to database
     const newMessage = new Message({
       sender: senderId,
       receiver: receiverId,
-      content: content || "",
+      content: encryptedContent,
       messageType: messageType || "text",
       imageUrl: imageUrl || "",
       fileUrl: fileUrl || "",
@@ -121,6 +121,8 @@ const sendMessage = async (req, res) => {
       previewText = `📄 ${fileName || "Document"}`;
     }
 
+    const encryptedPreviewText = previewText ? encryptMessage(previewText) : previewText;
+
     let chat = await Chat.findOne({
       participants: { $all: [senderId, receiverId] }
     });
@@ -128,16 +130,23 @@ const sendMessage = async (req, res) => {
     if (!chat) {
       chat = new Chat({
         participants: [senderId, receiverId],
-        lastMessage: previewText
+        lastMessage: encryptedPreviewText
       });
     } else {
-      chat.lastMessage = previewText;
+      chat.lastMessage = encryptedPreviewText;
     }
     await chat.save();
 
+    // Decrypt content for response payload
+    const responsePayload = newMessage.toObject();
+    responsePayload.content = decryptMessage(responsePayload.content);
+    if (responsePayload.replyTo && responsePayload.replyTo.content) {
+      responsePayload.replyTo.content = decryptMessage(responsePayload.replyTo.content);
+    }
+
     res.status(201).json({
       success: true,
-      message: newMessage
+      message: responsePayload
     });
   } catch (error) {
     console.error(`Send message error: ${error.message}`);
@@ -156,10 +165,6 @@ const getConversation = async (req, res) => {
     const loggedInUserId = req.user;
     const { userId } = req.params;
 
-    console.log("[Controller] Loading conversation:");
-    console.log("Current User:", loggedInUserId);
-    console.log("Target Partner User:", userId);
-
     const messages = await Message.find({
       $or: [
         { sender: loggedInUserId, receiver: userId },
@@ -171,9 +176,18 @@ const getConversation = async (req, res) => {
       populate: { path: 'sender', select: 'name' }
     }).sort({ createdAt: 1 });
 
+    const decryptedMessages = messages.map(msg => {
+      const msgObj = msg.toObject();
+      msgObj.content = decryptMessage(msgObj.content);
+      if (msgObj.replyTo && msgObj.replyTo.content) {
+        msgObj.replyTo.content = decryptMessage(msgObj.replyTo.content);
+      }
+      return msgObj;
+    });
+
     res.status(200).json({
       success: true,
-      messages
+      messages: decryptedMessages
     });
   } catch (error) {
     console.error(`Get conversation error: ${error.message}`);

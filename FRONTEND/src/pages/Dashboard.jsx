@@ -8,9 +8,11 @@ import MessageInput from '../components/MessageInput';
 import EmptyChat from '../components/EmptyChat';
 import ProfileModal from '../components/ProfileModal';
 import TypingIndicator from '../components/TypingIndicator';
+import MessageSkeleton from '../components/MessageSkeleton';
 import socket from '../socket/socket';
 import { useAppStore } from '../store/appStore';
 import { initializeUserKeys, encryptMessagePayload, decryptMessage } from '../services/encryptionService';
+import { encryptMessage as aesEncryptMessage, decryptMessage as aesDecryptMessage } from '../utils/encryption';
 
 const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const { currentUser } = useAppStore();
@@ -34,6 +36,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [loadingChats, setLoadingChats] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const ourId = currentUser?.id || currentUser?._id;
   const { updateCurrentUser } = useAppStore();
@@ -162,6 +166,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
   // Fetch friends and pending requests on mount
   const fetchFriends = useCallback(async () => {
+    setLoadingChats(true);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch('http://localhost:5000/api/friends', {
@@ -177,7 +182,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           username: u.username,
           avatar: u.avatar || 'https://i.pravatar.cc/150?img=10',
           isOnline: false,
-          lastMessage: u.lastMessage || 'Click to start chatting',
+          lastMessage: u.lastMessage ? aesDecryptMessage(u.lastMessage) : 'Click to start chatting',
           timestamp: '',
           lastSeen: u.lastSeen,
           lastMessageTime: u.lastMessageTime,
@@ -196,6 +201,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       }
     } catch (err) {
       console.error('Fetch friends failed:', err);
+    } finally {
+      setLoadingChats(false);
     }
   }, []);
 
@@ -368,7 +375,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       const partnerId = sender;
       const isCurrentChat = selectedChat && selectedChat.id === partnerId;
 
-      let decryptedContent = content;
+      let decryptedContent = aesDecryptMessage(content);
       let decryptedFileUrl = fileUrl;
       let decryptedFileName = fileName;
       let decryptedFileSize = fileSize;
@@ -551,6 +558,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     setChats(prev => prev.map(c => c.id === selectedChat.id ? { ...c, unread: 0 } : c));
 
     const fetchHistory = async () => {
+      setLoadingHistory(true);
       try {
         const token = localStorage.getItem('token');
         const res = await fetch(`http://localhost:5000/api/messages/${selectedChat.id}`, {
@@ -564,7 +572,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             id: msg._id,
             _id: msg._id,
             sender: msg.sender === ourId ? 'You' : selectedChat.name,
-            content: msg.content,
+            content: aesDecryptMessage(msg.content),
             timestamp: new Date(msg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
             isOwn: msg.sender === ourId,
             read: msg.status === 'seen',
@@ -600,10 +608,12 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
             headers: {
               'Authorization': `Bearer ${token}`
             }
-          }).catch(err => console.error("Seen updates sync failed:", err));
+          }).catch(err => console.error("Seen update failed:", err));
         }
       } catch (err) {
-        console.error('Fetch conversation history failed:', err);
+        console.error("Fetch history failed:", err);
+      } finally {
+        setLoadingHistory(false);
       }
     };
 
@@ -851,11 +861,13 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const handleSendMessage = async (content, attachment = null, replyToId = null, isForwarded = false) => {
     if (!selectedChat) return;
 
+    const encryptedText = content ? aesEncryptMessage(content) : "";
+
     try {
       const token = localStorage.getItem('token');
       const messageBody = {
         receiverId: selectedChat.id,
-        content: content || "",
+        content: encryptedText,
         replyTo: replyToId,
         isForwarded
       };
@@ -1089,6 +1101,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
           isMobileOpen={isMobileSidebarOpen}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
           pendingRequestsCount={pendingRequestsCount}
+          isLoadingChats={loadingChats}
         />
       </div>
 
@@ -1139,16 +1152,19 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                 animate={{ opacity: 1 }}
                 className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900"
               >
-                <div className="max-w-3xl mx-auto space-y-4">
-                  {filteredMessages.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-center py-20">
-                      <div>
-                        <p className="text-gray-500 dark:text-gray-400 text-base">
-                          {searchMessageQuery ? 'No messages match your search' : 'No messages yet. Start the conversation!'}
-                        </p>
+                {loadingHistory ? (
+                  <MessageSkeleton count={6} />
+                ) : (
+                  <div className="max-w-3xl mx-auto space-y-4">
+                    {filteredMessages.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-center py-20">
+                        <div>
+                          <p className="text-gray-500 dark:text-gray-400 text-base">
+                            {searchMessageQuery ? 'No messages match your search' : 'No messages yet. Start the conversation!'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
+                    ) : (
                     <>
                       {/* Date Separator */}
                       <div className="flex items-center gap-4 my-4">
@@ -1199,6 +1215,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                   )}
                   <div ref={messagesEndRef} />
                 </div>
+              )}
               </motion.div>
 
               {/* Message Input / Blocked Banner */}

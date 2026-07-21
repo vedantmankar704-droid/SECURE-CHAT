@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, UserPlus, UserCheck, UserX, Clock, ArrowLeft, Users, Check, X, ShieldAlert } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import socket from '../socket/socket';
+import ChatListSkeleton from '../components/ChatListSkeleton';
 
 const Requests = ({ onNavigate }) => {
   const { currentUser } = useAppStore();
@@ -268,9 +269,7 @@ const Requests = ({ onNavigate }) => {
             </div>
 
             {isSearching && (
-              <div className="text-center py-8 text-gray-500 text-sm">
-                Searching users...
-              </div>
+              <ChatListSkeleton count={4} />
             )}
 
             {!isSearching && searchQuery.trim() !== '' && searchResults.length === 0 && (
@@ -352,7 +351,7 @@ const Requests = ({ onNavigate }) => {
         {/* Tab 2: Incoming Requests */}
         {activeTab === 'incoming' && (
           <div className="space-y-4">
-            {loadingRequests && <div className="text-center py-8 text-gray-500 text-sm">Loading requests...</div>}
+            {loadingRequests && <ChatListSkeleton count={4} />}
             
             {!loadingRequests && incomingRequests.length === 0 && (
               <div className="text-center py-12 bg-white dark:bg-darkSideBar rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
@@ -411,7 +410,7 @@ const Requests = ({ onNavigate }) => {
         {/* Tab 3: Outgoing Requests */}
         {activeTab === 'outgoing' && (
           <div className="space-y-4">
-            {loadingRequests && <div className="text-center py-8 text-gray-500 text-sm">Loading requests...</div>}
+            {loadingRequests && <ChatListSkeleton count={4} />}
 
             {!loadingRequests && outgoingRequests.length === 0 && (
               <div className="text-center py-12 bg-white dark:bg-darkSideBar rounded-2xl border border-gray-200 dark:border-gray-700 p-6">

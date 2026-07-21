@@ -5,7 +5,7 @@ import SearchBar from './SearchBar';
 import ChatList from './ChatList';
 import { useAppStore } from '../store/appStore';
 
-const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onToggleDarkMode, isMobileOpen, onCloseMobile, pendingRequestsCount = 0 }) => {
+const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onToggleDarkMode, isMobileOpen, onCloseMobile, pendingRequestsCount = 0, isLoadingChats = false }) => {
   const { currentUser, updateCurrentUser } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [showMenu, setShowMenu] = useState(false);
@@ -156,6 +156,7 @@ const Sidebar = ({ chats, activeChat, onSelectChat, onNavigate, darkMode, onTogg
           onCloseMobile();
         }}
         searchQuery={searchQuery}
+        isLoading={isLoadingChats}
       />
     </motion.div>
   );

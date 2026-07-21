@@ -1,7 +1,12 @@
 import { motion } from 'framer-motion';
 import ChatItem from './ChatItem';
+import ChatListSkeleton from './ChatListSkeleton';
 
-const ChatList = ({ chats, activeChat, onSelectChat, searchQuery }) => {
+const ChatList = ({ chats, activeChat, onSelectChat, searchQuery, isLoading }) => {
+  if (isLoading) {
+    return <ChatListSkeleton count={6} />;
+  }
+
   const filteredChats = chats.filter(chat =>
     chat.name.toLowerCase().includes(searchQuery.toLowerCase())
   );

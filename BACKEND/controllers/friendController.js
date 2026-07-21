@@ -2,6 +2,7 @@ const User = require('../models/User');
 const FriendRequest = require('../models/FriendRequest');
 const Message = require('../models/Message');
 const { getReceiverSocketId, getIO } = require('../socket/socket');
+const { decryptMessage } = require('../utils/encryption');
 
 // @desc    Search users by username or name
 // @route   GET /api/friends/search
@@ -418,7 +419,7 @@ const getFriends = async (req, res) => {
         } else if (latestMessage.messageType === 'file') {
           previewText = `📄 ${latestMessage.fileName || 'Document'}`;
         } else {
-          previewText = latestMessage.content;
+          previewText = decryptMessage(latestMessage.content);
         }
       }
 
