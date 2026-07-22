@@ -11,7 +11,9 @@ const ChatHeader = ({
   searchMessageQuery, 
   setSearchMessageQuery, 
   showMessageSearch, 
-  setShowMessageSearch 
+  setShowMessageSearch,
+  onClearChat,
+  onDeleteChat
 }) => {
   const [showMenu, setShowMenu] = useState(false);
 
@@ -39,7 +41,7 @@ const ChatHeader = ({
             value={searchMessageQuery}
             onChange={(e) => setSearchMessageQuery(e.target.value)}
             placeholder="Search messages in this chat..."
-            className="w-full max-w-md px-4 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+            className="w-full max-w-md px-4 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-650 rounded-full text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
             autoFocus
           />
         </div>
@@ -163,6 +165,24 @@ const ChatHeader = ({
                 className="w-full px-4 py-2 text-left text-xs text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 font-semibold"
               >
                 Mute Notifications
+              </button>
+              <button 
+                onClick={() => {
+                  onClearChat();
+                  setShowMenu(false);
+                }}
+                className="w-full px-4 py-2 text-left text-xs text-red-650 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-600 font-bold border-t border-gray-100 dark:border-gray-600"
+              >
+                Clear Chat
+              </button>
+              <button 
+                onClick={() => {
+                  onDeleteChat();
+                  setShowMenu(false);
+                }}
+                className="w-full px-4 py-2 text-left text-xs text-red-650 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-600 font-bold"
+              >
+                Delete Chat
               </button>
             </motion.div>
           )}

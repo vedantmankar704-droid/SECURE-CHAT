@@ -38,6 +38,10 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [loadingChats, setLoadingChats] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showClearChatModal, setShowClearChatModal] = useState(false);
+  const [showDeleteChatModal, setShowDeleteChatModal] = useState(false);
+  const [isClearingChat, setIsClearingChat] = useState(false);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
 
   const ourId = currentUser?.id || currentUser?._id;
   const { updateCurrentUser } = useAppStore();
@@ -709,6 +713,76 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     }
   };
 
+  const handleClearChat = async () => {
+    if (!selectedChat || !selectedChat.chatId) return;
+    setIsClearingChat(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/api/chat/${selectedChat.chatId}/clear`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessages(prev => ({
+          ...prev,
+          [selectedChat.id]: []
+        }));
+        setChats(prevChats => 
+          prevChats.map(c => 
+            c.id === selectedChat.id 
+              ? { ...c, lastMessage: 'Click to start chatting', lastMessageTime: null, unread: 0 } 
+              : c
+          )
+        );
+        setToast({ message: "Chat cleared successfully", type: "success" });
+      } else {
+        setToast({ message: data.message || "Failed to clear chat", type: "error" });
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Network error occurred", type: "error" });
+    } finally {
+      setIsClearingChat(false);
+      setShowClearChatModal(false);
+    }
+  };
+
+  const handleDeleteChat = async () => {
+    if (!selectedChat || !selectedChat.chatId) return;
+    setIsDeletingChat(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/api/chat/${selectedChat.chatId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessages(prev => {
+          const next = { ...prev };
+          delete next[selectedChat.id];
+          return next;
+        });
+        setChats(prevChats => prevChats.filter(c => c.id !== selectedChat.id));
+        setSelectedChat(null);
+        setToast({ message: "Chat deleted successfully", type: "success" });
+      } else {
+        setToast({ message: data.message || "Failed to delete chat", type: "error" });
+      }
+    } catch (err) {
+      console.error(err);
+      setToast({ message: "Network error occurred", type: "error" });
+    } finally {
+      setIsDeletingChat(false);
+      setShowDeleteChatModal(false);
+    }
+  };
+
   // Execute forward message
   const executeForwardMessage = async (targetChat, msg) => {
     try {
@@ -1105,6 +1179,8 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                 setSearchMessageQuery={setSearchMessageQuery}
                 showMessageSearch={showMessageSearch}
                 setShowMessageSearch={setShowMessageSearch}
+                onClearChat={() => setShowClearChatModal(true)}
+                onDeleteChat={() => setShowDeleteChatModal(true)}
               />
 
               {/* Message Search Count Bar */}
@@ -1300,6 +1376,112 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
                   disabled={isDeleting}
                   onClick={() => setDeleteModalMsg(null)}
                   className="w-full py-2 text-gray-550 hover:text-gray-750 dark:text-gray-400 dark:hover:text-gray-200 text-xs font-semibold transition-all mt-1 cursor-pointer hover:underline disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Clear Chat Confirmation Modal */}
+      <AnimatePresence>
+        {showClearChatModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-gray-700/85 flex flex-col items-center text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center text-red-550 mb-4 shadow-inner">
+                <Trash2 size={22} />
+              </div>
+
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">
+                Clear Chat?
+              </h3>
+              
+              <p className="text-xs text-gray-550 dark:text-gray-400 mb-6 leading-relaxed max-w-[280px]">
+                Are you sure you want to clear all messages in this chat? Other participants will still be able to see them.
+              </p>
+
+              <div className="flex flex-col gap-2.5 w-full">
+                <button
+                  disabled={isClearingChat}
+                  onClick={handleClearChat}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] shadow-md shadow-red-200/50 dark:shadow-none"
+                >
+                  {isClearingChat ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : null}
+                  <span>Clear Chat</span>
+                </button>
+                
+                <button
+                  disabled={isClearingChat}
+                  onClick={() => setShowClearChatModal(false)}
+                  className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-650 disabled:bg-gray-50 dark:disabled:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Chat Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteChatModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-gray-700/85 flex flex-col items-center text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center text-red-550 mb-4 shadow-inner">
+                <Trash2 size={22} />
+              </div>
+
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">
+                Delete Chat?
+              </h3>
+              
+              <p className="text-xs text-gray-550 dark:text-gray-400 mb-6 leading-relaxed max-w-[280px]">
+                Are you sure you want to delete this conversation? This will hide it from your list. Other participants will not be affected.
+              </p>
+
+              <div className="flex flex-col gap-2.5 w-full">
+                <button
+                  disabled={isDeletingChat}
+                  onClick={handleDeleteChat}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] shadow-md shadow-red-200/50 dark:shadow-none"
+                >
+                  {isDeletingChat ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : null}
+                  <span>Delete Chat</span>
+                </button>
+                
+                <button
+                  disabled={isDeletingChat}
+                  onClick={() => setShowDeleteChatModal(false)}
+                  className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-650 disabled:bg-gray-50 dark:disabled:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99]"
                 >
                   Cancel
                 </button>

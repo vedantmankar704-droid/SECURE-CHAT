@@ -130,10 +130,15 @@ const sendMessage = async (req, res) => {
     if (!chat) {
       chat = new Chat({
         participants: [senderId, receiverId],
-        lastMessage: encryptedPreviewText
+        lastMessage: encryptedPreviewText,
+        hiddenForUsers: []
       });
     } else {
       chat.lastMessage = encryptedPreviewText;
+      // Recreate conversation for both participants if hidden
+      chat.hiddenForUsers = (chat.hiddenForUsers || []).filter(
+        id => id.toString() !== senderId.toString() && id.toString() !== receiverId.toString()
+      );
     }
     await chat.save();
 
@@ -165,13 +170,33 @@ const getConversation = async (req, res) => {
     const loggedInUserId = req.user;
     const { userId } = req.params;
 
-    const messages = await Message.find({
+    const chat = await Chat.findOne({
+      participants: { $all: [loggedInUserId, userId] }
+    });
+
+    let clearTimestamp = null;
+    if (chat && chat.clearTimestamps) {
+      const userCt = chat.clearTimestamps.find(
+        t => t.userId.toString() === loggedInUserId.toString()
+      );
+      if (userCt) {
+        clearTimestamp = userCt.timestamp;
+      }
+    }
+
+    const query = {
       $or: [
         { sender: loggedInUserId, receiver: userId },
         { sender: userId, receiver: loggedInUserId }
       ],
       deletedForUsers: { $ne: loggedInUserId }
-    }).populate({
+    };
+
+    if (clearTimestamp) {
+      query.createdAt = { $gt: clearTimestamp };
+    }
+
+    const messages = await Message.find(query).populate({
       path: 'replyTo',
       populate: { path: 'sender', select: 'name' }
     }).sort({ createdAt: 1 });

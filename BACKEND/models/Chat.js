@@ -9,7 +9,15 @@ const chatSchema = new mongoose.Schema({
   lastMessage: {
     type: String,
     default: ''
-  }
+  },
+  clearTimestamps: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    timestamp: { type: Date, default: Date.now }
+  }],
+  hiddenForUsers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, {
   timestamps: true
 });

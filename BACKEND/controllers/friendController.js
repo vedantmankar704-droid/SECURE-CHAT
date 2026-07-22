@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const FriendRequest = require('../models/FriendRequest');
 const Message = require('../models/Message');
+const Chat = require('../models/Chat');
 const { getReceiverSocketId, getIO } = require('../socket/socket');
 const { decryptMessage } = require('../utils/encryption');
 
@@ -391,20 +392,56 @@ const getFriends = async (req, res) => {
       .select('_id name username avatar isOnline lastSeen bio phone blockedUsers publicKey');
 
     // Fetch latest message and unread count for each friend
-    const friendsWithDetails = await Promise.all(friends.map(async (u) => {
-      const latestMessage = await Message.findOne({
+    const friendsWithDetailsRaw = await Promise.all(friends.map(async (u) => {
+      let chatDoc = await Chat.findOne({
+        participants: { $all: [loggedInUserId, u._id] }
+      });
+      if (!chatDoc) {
+        chatDoc = new Chat({
+          participants: [loggedInUserId, u._id]
+        });
+        await chatDoc.save();
+      }
+
+      // Hide conversation if user ID is in hiddenForUsers
+      if (chatDoc.hiddenForUsers && chatDoc.hiddenForUsers.map(id => id.toString()).includes(loggedInUserId.toString())) {
+        return null;
+      }
+
+      // Check clearTimestamp for current user
+      let clearTimestamp = null;
+      if (chatDoc.clearTimestamps) {
+        const userCt = chatDoc.clearTimestamps.find(
+          t => t.userId.toString() === loggedInUserId.toString()
+        );
+        if (userCt) {
+          clearTimestamp = userCt.timestamp;
+        }
+      }
+
+      const messageQuery = {
         $or: [
           { sender: loggedInUserId, receiver: u._id },
           { sender: u._id, receiver: loggedInUserId }
         ],
         deletedForUsers: { $ne: loggedInUserId }
-      }).sort({ createdAt: -1 });
+      };
 
-      const unreadCount = await Message.countDocuments({
+      if (clearTimestamp) {
+        messageQuery.createdAt = { $gt: clearTimestamp };
+      }
+
+      const latestMessage = await Message.findOne(messageQuery).sort({ createdAt: -1 });
+
+      const unreadQuery = {
         sender: u._id,
         receiver: loggedInUserId,
         status: { $ne: 'seen' }
-      });
+      };
+      if (clearTimestamp) {
+        unreadQuery.createdAt = { $gt: clearTimestamp };
+      }
+      const unreadCount = await Message.countDocuments(unreadQuery);
 
       let previewText = 'Click to start chatting';
       if (latestMessage) {
@@ -429,6 +466,7 @@ const getFriends = async (req, res) => {
 
       return {
         _id: u._id,
+        chatId: chatDoc._id,
         name: u.name,
         username: u.username,
         avatar: u.avatar,
@@ -444,6 +482,8 @@ const getFriends = async (req, res) => {
         publicKey: u.publicKey || ""
       };
     }));
+
+    const friendsWithDetails = friendsWithDetailsRaw.filter(f => f !== null);
 
     res.status(200).json({
       success: true,
