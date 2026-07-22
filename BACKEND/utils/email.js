@@ -1,31 +1,30 @@
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-const emailService = (process.env.EMAIL_SERVICE || '').trim();
 const emailUser = (process.env.EMAIL_USER || '').trim();
-const emailPass = (process.env.EMAIL_PASS || '').trim();
+const emailPass = (process.env.EMAIL_PASS || '').replace(/\s+/g, "").trim();
 
-// Log credentials securely (password only printed as length)
-console.log('✉️  Nodemailer Email Service Startup Configuration:');
-console.log(`   - EMAIL_SERVICE: "${emailService}"`);
+// Log credentials securely (password only printed as length after removing spaces)
+console.log('✉️  Nodemailer Explicit SMTP Configuration:');
 console.log(`   - EMAIL_USER: "${emailUser}"`);
-console.log(`   - EMAIL_PASS (Length): ${emailPass.length}`);
+console.log(`   - EMAIL_PASS (Length after removing spaces): ${emailPass.length}`);
 
 // Validate that Gmail SMTP environment variables exist
-if (!emailService || !emailUser || !emailPass) {
+if (!emailUser || !emailPass) {
   console.error('\n==================================================================');
   console.error('❌ CRITICAL ERROR: Nodemailer SMTP configuration is missing in .env');
   console.error('Please configure the following environment variables in BACKEND/.env:');
-  console.error('  EMAIL_SERVICE=Gmail');
   console.error('  EMAIL_USER=your_gmail@gmail.com');
   console.error('  EMAIL_PASS=your_16_character_google_app_password');
   console.error('==================================================================\n');
   process.exit(1);
 }
 
-// Create Gmail SMTP transporter
+// Create explicit Gmail SMTP transporter
 const transporter = nodemailer.createTransport({
-  service: emailService.toLowerCase() === 'gmail' ? 'gmail' : emailService,
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: emailUser,
     pass: emailPass
@@ -36,6 +35,9 @@ const transporter = nodemailer.createTransport({
 transporter.verify((error, success) => {
   if (error) {
     console.error('❌ Gmail SMTP Connection/Authentication Failed:', error.message);
+    if (error.response) {
+      console.error('   Gmail Response:', error.response);
+    }
   } else {
     console.log('✅ Gmail SMTP Server is successfully verified and ready to deliver emails');
   }
