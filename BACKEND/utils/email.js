@@ -32,7 +32,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // Test SMTP connection on startup
-transporter.verify((error, success) => {
+transporter.verify(async (error, success) => {
   if (error) {
     console.error('❌ Gmail SMTP Connection/Authentication Failed:', error.message);
     if (error.response) {
@@ -40,6 +40,18 @@ transporter.verify((error, success) => {
     }
   } else {
     console.log('✅ Gmail SMTP Server is successfully verified and ready to deliver emails');
+    try {
+      console.log(`📤 Sending automatic SMTP verification test email to ${emailUser} ...`);
+      const info = await transporter.sendMail({
+        from: `"Secure Chat Support" <${emailUser}>`,
+        to: emailUser,
+        subject: '🔒 Secure Chat - SMTP Startup Verification Success',
+        text: 'This is an automatic test email confirming that your Gmail SMTP integration is working 100% correctly!'
+      });
+      console.log(`✉️ Verification test email sent successfully. MessageID: ${info.messageId}`);
+    } catch (sendErr) {
+      console.error('❌ Failed to send verification test email:', sendErr.message);
+    }
   }
 });
 

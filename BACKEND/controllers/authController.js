@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { sendOTPEmail } = require('../utils/email');
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -343,7 +344,6 @@ const forgotPassword = async (req, res) => {
 
     await user.save();
 
-    const { sendOTPEmail } = require('../utils/email');
     await sendOTPEmail(user.email, otp);
 
     res.json({
@@ -450,7 +450,6 @@ const resendOTP = async (req, res) => {
 
     await user.save();
 
-    const { sendOTPEmail } = require('../utils/email');
     await sendOTPEmail(user.email, otp);
 
     res.json({
