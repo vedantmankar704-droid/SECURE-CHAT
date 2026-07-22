@@ -77,9 +77,8 @@ const xssSanitizer = (req, res, next) => {
 app.use(helmet({
   crossOriginResourcePolicy: false
 }));
-const CLIENT_URL = process.env.CLIENT_URL || '*';
 app.use(cors({
-  origin: CLIENT_URL === '*' ? '*' : [CLIENT_URL, 'http://localhost:5173', 'http://localhost:5174'],
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
   credentials: true
 }));
 app.use(express.json());
