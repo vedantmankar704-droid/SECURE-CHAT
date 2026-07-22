@@ -11,6 +11,8 @@ const getReceiverSocketId = (userId) => {
   return userSocketMap[userId] || null;
 };
 
+const activeConversations = {}; // userId -> partnerId in-memory Map
+
 const initSocket = (server) => {
   io = new Server(server, {
     cors: {
@@ -204,6 +206,14 @@ const initSocket = (server) => {
       }
     });
 
+    // Listen for active chat updates from client
+    socket.on('activeChatChanged', ({ userId, partnerId }) => {
+      if (userId) {
+        activeConversations[userId.toString()] = partnerId ? partnerId.toString() : null;
+        console.log(`[Socket Server] Active chat updated: User ${userId} is now viewing ${partnerId || 'none'}`);
+      }
+    });
+
     // Handle disconnection
     socket.on('disconnect', async () => {
       console.log(`User Disconnected: ${socket.id}`);
@@ -220,6 +230,7 @@ const initSocket = (server) => {
       }
 
       if (disconnectedUserId) {
+        delete activeConversations[disconnectedUserId];
         try {
           const lastSeenDate = new Date();
           // Update MongoDB record
@@ -249,5 +260,6 @@ module.exports = {
   initSocket,
   getIO,
   getReceiverSocketId,
-  userSocketMap
+  userSocketMap,
+  activeConversations
 };

@@ -44,6 +44,27 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
   const [isDeletingChat, setIsDeletingChat] = useState(false);
 
   const ourId = currentUser?.id || currentUser?._id;
+
+  const chatsRef = useRef(chats);
+  useEffect(() => {
+    chatsRef.current = chats;
+  }, [chats]);
+
+  const totalUnreadCount = chats.reduce((acc, c) => acc + (c.unread || 0), 0);
+
+  useEffect(() => {
+    if (totalUnreadCount > 0) {
+      document.title = `(${totalUnreadCount}) Secure Chat`;
+    } else {
+      document.title = 'Secure Chat';
+    }
+  }, [totalUnreadCount]);
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
   const { updateCurrentUser } = useAppStore();
 
   const selectedChatRef = useRef(selectedChat);
@@ -51,7 +72,15 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
     selectedChatRef.current = selectedChat;
     console.log('[State Change] isTyping updated to: false (Chat selection changed)');
     setIsTyping(false);
-  }, [selectedChat]);
+
+    // Emit activeChatChanged socket event to server
+    if (socket && ourId) {
+      socket.emit('activeChatChanged', {
+        userId: ourId,
+        partnerId: selectedChat ? selectedChat.id : null
+      });
+    }
+  }, [selectedChat, ourId]);
 
   const updateIsTyping = (val) => {
     console.log('[State Change] isTyping updated to:', val);
@@ -366,6 +395,56 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       ));
     };
 
+    // Web Audio API Synthesizer for chime notification sound
+    const playChime = () => {
+      const isMuted = localStorage.getItem('chat_mute_sound') === 'true';
+      if (isMuted) return;
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        
+        osc.frequency.setValueAtTime(880.00, audioCtx.currentTime + 0.15); // A5
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime + 0.12);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.17);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
+        
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.4);
+      } catch (e) {
+        console.error("Audio Context playback failed:", e);
+      }
+    };
+
+    const showBrowserNotification = (senderName, messagePreview, avatarUrl, senderId) => {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const options = {
+          body: messagePreview,
+          icon: avatarUrl || 'https://i.pravatar.cc/150?img=10',
+          tag: senderId,
+          renotify: true
+        };
+        const n = new Notification(`New message from ${senderName}`, options);
+        n.onclick = () => {
+          window.focus();
+          const chat = chatsRef.current.find(c => c.id === senderId);
+          if (chat) {
+            setSelectedChat(chat);
+          }
+          n.close();
+        };
+      }
+    };
+
     // Receive message handler
     const handleReceiveMessage = async (data) => {
       console.log('Real-time message received via socket:', data);
@@ -443,11 +522,27 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
       setMessages(prev => {
         const chatMsgs = prev[partnerId] || [];
+        const exists = chatMsgs.some(m => m.id === newIncomingMessage.id || m._id === newIncomingMessage._id);
+        if (exists) return prev;
         return {
           ...prev,
           [partnerId]: [...chatMsgs, newIncomingMessage]
         };
       });
+
+      // Play sound notification chime
+      if (sender !== ourId) {
+        playChime();
+        
+        // Trigger browser notification only if document is not visible
+        const isAppActive = document.visibilityState === 'visible';
+        if (!isAppActive) {
+          const senderChat = chatsRef.current.find(c => c.id === partnerId);
+          const senderName = senderChat ? senderChat.name : "New Contact";
+          const senderAvatar = senderChat ? senderChat.avatar : null;
+          showBrowserNotification(senderName, decryptedContent || "Sent an attachment", senderAvatar, partnerId);
+        }
+      }
 
       // Mark seen immediately if active conversation panel is open
       if (isCurrentChat) {
@@ -473,7 +568,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
 
       setChats(prevChats => {
         const updated = prevChats.map(c => 
-          c.id === partnerId 
+          (c.id === partnerId || c._id === partnerId)
             ? { 
                 ...c, 
                 lastMessage: previewText, 
@@ -517,15 +612,30 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       setToast({ message: `@${payload.user?.username || 'User'} accepted your friend request!`, type: 'success' });
     };
 
+    const handleUnreadUpdated = ({ chatId, userId, count }) => {
+      if (userId === ourId) {
+        setChats(prevChats =>
+          prevChats.map(c =>
+            c.chatId === chatId
+              ? { ...c, unread: count }
+              : c
+          )
+        );
+      }
+    };
+
     // Socket registers
     socket.on('getOnlineUsers', handleGetOnlineUsers);
     socket.on('userOnline', handleUserOnline);
     socket.on('userOffline', handleUserOffline);
     socket.on('receiveMessage', handleReceiveMessage);
+    socket.on('newMessage', handleReceiveMessage);
+    socket.on('unreadUpdated', handleUnreadUpdated);
     socket.on('messageStatusUpdated', handleMessageStatusUpdated);
     socket.on('messageDelivered', handleMessageStatusUpdated);
     socket.on('messagesSeen', handleMessagesSeen);
     socket.on('messageSeen', handleMessagesSeen);
+    socket.on('messageRead', handleMessagesSeen);
     socket.on('reactionAdded', handleReactionAdded);
     socket.on('reactionRemoved', handleReactionRemoved);
     socket.on('reactionUpdated', handleReactionUpdated);
@@ -540,10 +650,13 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       socket.off('userOnline', handleUserOnline);
       socket.off('userOffline', handleUserOffline);
       socket.off('receiveMessage', handleReceiveMessage);
+      socket.off('newMessage', handleReceiveMessage);
+      socket.off('unreadUpdated', handleUnreadUpdated);
       socket.off('messageStatusUpdated', handleMessageStatusUpdated);
       socket.off('messageDelivered', handleMessageStatusUpdated);
       socket.off('messagesSeen', handleMessagesSeen);
       socket.off('messageSeen', handleMessagesSeen);
+      socket.off('messageRead', handleMessagesSeen);
       socket.off('reactionAdded', handleReactionAdded);
       socket.off('reactionRemoved', handleReactionRemoved);
       socket.off('reactionUpdated', handleReactionUpdated);

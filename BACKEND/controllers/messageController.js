@@ -2,7 +2,7 @@ const Message = require('../models/Message');
 const Chat = require('../models/Chat');
 const User = require('../models/User');
 const FriendRequest = require('../models/FriendRequest');
-const { getReceiverSocketId, getIO } = require('../socket/socket');
+const { getReceiverSocketId, getIO, activeConversations } = require('../socket/socket');
 const { encryptMessage, decryptMessage } = require('../utils/encryption');
 
 // @desc    Send a message to a user
@@ -74,7 +74,8 @@ const sendMessage = async (req, res) => {
 
     // Determine initial status based on recipient socket availability
     const receiverSocketId = getReceiverSocketId(receiverId.toString());
-    const initialStatus = receiverSocketId ? 'delivered' : 'sent';
+    const isReceiverViewing = activeConversations[receiverId.toString()] === senderId.toString();
+    const initialStatus = isReceiverViewing ? 'seen' : (receiverSocketId ? 'delivered' : 'sent');
 
     // Encrypt content before saving to MongoDB
     const encryptedContent = content ? encryptMessage(content) : "";
@@ -131,7 +132,8 @@ const sendMessage = async (req, res) => {
       chat = new Chat({
         participants: [senderId, receiverId],
         lastMessage: encryptedPreviewText,
-        hiddenForUsers: []
+        hiddenForUsers: [],
+        unreadCounts: []
       });
     } else {
       chat.lastMessage = encryptedPreviewText;
@@ -140,6 +142,33 @@ const sendMessage = async (req, res) => {
         id => id.toString() !== senderId.toString() && id.toString() !== receiverId.toString()
       );
     }
+
+    // Ensure unreadCounts array exists
+    if (!chat.unreadCounts) {
+      chat.unreadCounts = [];
+    }
+
+    // Reset unread count for sender (should be 0)
+    const senderIdx = chat.unreadCounts.findIndex(u => u.userId.toString() === senderId.toString());
+    if (senderIdx > -1) {
+      chat.unreadCounts[senderIdx].count = 0;
+    } else {
+      chat.unreadCounts.push({ userId: senderId, count: 0 });
+    }
+
+    // If receiver is not actively viewing, increment unread count for receiver
+    let newUnreadCount = 0;
+    if (!isReceiverViewing) {
+      const receiverIdx = chat.unreadCounts.findIndex(u => u.userId.toString() === receiverId.toString());
+      if (receiverIdx > -1) {
+        chat.unreadCounts[receiverIdx].count += 1;
+        newUnreadCount = chat.unreadCounts[receiverIdx].count;
+      } else {
+        chat.unreadCounts.push({ userId: receiverId, count: 1 });
+        newUnreadCount = 1;
+      }
+    }
+
     await chat.save();
 
     // Decrypt content for response payload
@@ -153,6 +182,19 @@ const sendMessage = async (req, res) => {
       success: true,
       message: responsePayload
     });
+
+    // Emit newMessage and unreadUpdated events to the receiver via Socket.io
+    const io = getIO();
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('newMessage', responsePayload);
+      if (!isReceiverViewing) {
+        io.to(receiverSocketId).emit('unreadUpdated', {
+          chatId: chat._id,
+          userId: receiverId,
+          count: newUnreadCount
+        });
+      }
+    }
   } catch (error) {
     console.error(`Send message error: ${error.message}`);
     res.status(500).json({
@@ -250,6 +292,40 @@ const markAsSeen = async (req, res) => {
         senderId: receiverId,
         receiverId: senderId
       });
+      // Emit messageRead event to sync client
+      io.to(senderSocketId).emit('messageRead', {
+        chatId: chat ? chat._id : null,
+        senderId: receiverId,
+        receiverId: senderId
+      });
+    }
+
+    // Reset unread count for current user in Chat schema
+    const chat = await Chat.findOne({
+      participants: { $all: [senderId, receiverId] }
+    });
+    if (chat) {
+      if (!chat.unreadCounts) {
+        chat.unreadCounts = [];
+      }
+      const idx = chat.unreadCounts.findIndex(u => u.userId.toString() === receiverId.toString());
+      if (idx > -1) {
+        chat.unreadCounts[idx].count = 0;
+      } else {
+        chat.unreadCounts.push({ userId: receiverId, count: 0 });
+      }
+      await chat.save();
+
+      // Emit unreadUpdated to the user who opened the chat
+      const receiverSocketId = getReceiverSocketId(receiverId.toString());
+      if (receiverSocketId) {
+        const io = getIO();
+        io.to(receiverSocketId).emit('unreadUpdated', {
+          chatId: chat._id,
+          userId: receiverId,
+          count: 0
+        });
+      }
     }
 
     res.status(200).json({

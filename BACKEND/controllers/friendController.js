@@ -433,15 +433,10 @@ const getFriends = async (req, res) => {
 
       const latestMessage = await Message.findOne(messageQuery).sort({ createdAt: -1 });
 
-      const unreadQuery = {
-        sender: u._id,
-        receiver: loggedInUserId,
-        status: { $ne: 'seen' }
-      };
-      if (clearTimestamp) {
-        unreadQuery.createdAt = { $gt: clearTimestamp };
-      }
-      const unreadCount = await Message.countDocuments(unreadQuery);
+      const unreadObj = chatDoc.unreadCounts && chatDoc.unreadCounts.find(
+        uc => uc.userId.toString() === loggedInUserId.toString()
+      );
+      const unreadCount = unreadObj ? unreadObj.count : 0;
 
       let previewText = 'Click to start chatting';
       if (latestMessage) {
