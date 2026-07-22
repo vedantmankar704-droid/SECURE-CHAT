@@ -1,34 +1,42 @@
 const nodemailer = require('nodemailer');
 
-const sendOTPEmail = async (email, otp) => {
-  // If credentials are not present in .env, we can auto-create a mock ethereal transporter
-  let transporter;
-  
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    // Real SMTP configuration
-    transporter = nodemailer.createTransport({
-      service: process.env.EMAIL_SERVICE || 'Gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
-  } else {
-    // Ethereal test transporter fallback (so development always works out of the box!)
-    console.log(`⚠️ EMAIL_USER/EMAIL_PASS not configured in .env. Using mock ethereal transporter.`);
-    transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 588,
-      secure: false,
-      auth: {
-        user: 'mock.user@ethereal.email',
-        pass: 'mockPassword'
-      }
-    });
-  }
+const emailService = process.env.EMAIL_SERVICE;
+const emailUser = process.env.EMAIL_USER;
+const emailPass = process.env.EMAIL_PASS;
 
+// Validate that Gmail SMTP environment variables exist
+if (!emailService || !emailUser || !emailPass) {
+  console.error('\n==================================================================');
+  console.error('❌ CRITICAL ERROR: Nodemailer SMTP configuration is missing in .env');
+  console.error('Please configure the following environment variables in BACKEND/.env:');
+  console.error('  EMAIL_SERVICE=Gmail');
+  console.error('  EMAIL_USER=your_gmail@gmail.com');
+  console.error('  EMAIL_PASS=your_16_character_google_app_password');
+  console.error('==================================================================\n');
+  process.exit(1);
+}
+
+// Create Gmail SMTP transporter
+const transporter = nodemailer.createTransport({
+  service: emailService,
+  auth: {
+    user: emailUser,
+    pass: emailPass
+  }
+});
+
+// Test SMTP connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ Gmail SMTP Connection/Authentication Failed:', error.message);
+  } else {
+    console.log('✅ Gmail SMTP Server is successfully verified and ready to deliver emails');
+  }
+});
+
+const sendOTPEmail = async (email, otp) => {
   const mailOptions = {
-    from: `"Secure Chat Support" <${process.env.EMAIL_USER || 'no-reply@securechat.com'}>`,
+    from: `"Secure Chat Support" <${emailUser}>`,
     to: email,
     subject: '🔒 Secure Chat - Password Reset OTP',
     html: `
@@ -123,16 +131,14 @@ const sendOTPEmail = async (email, otp) => {
     `
   };
 
-  // If using Ethereal fallback, log the OTP directly so developer can see it in terminal
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log(`\n==========================================`);
-    console.log(`✉️  [MOCK EMAIL SENT TO: ${email}]`);
-    console.log(`🔑  YOUR OTP CODE: ${otp}`);
-    console.log(`==========================================\n`);
-    return { mock: true, otp };
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✉️ OTP email sent successfully to ${email}. MessageID: ${info.messageId}`);
+    return info;
+  } catch (error) {
+    console.error(`❌ Failed to send OTP email to ${email}. Error:`, error);
+    throw error;
   }
-
-  return transporter.sendMail(mailOptions);
 };
 
 module.exports = { sendOTPEmail };
