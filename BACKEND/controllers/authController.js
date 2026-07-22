@@ -215,8 +215,9 @@ const uploadAvatar = async (req, res) => {
       });
     }
 
-    // Construct the public URL of the uploaded image
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Convert Windows backslashes to forward slashes for static path URLs
+    const relativePath = req.file.path.replace(/\\/g, '/');
+    const fileUrl = `${req.protocol}://${req.get('host')}/${relativePath}`;
 
     // Update user document in MongoDB
     const user = await User.findByIdAndUpdate(
