@@ -182,6 +182,7 @@ const Dashboard = ({ onNavigate, darkMode, onToggleDarkMode }) => {
       if (res.ok && data.success) {
         const normalizedUsers = (data.friends || []).map(u => ({
           id: u._id,
+          chatId: u.chatId,
           name: u.name,
           username: u.username,
           avatar: u.avatar || 'https://i.pravatar.cc/150?img=10',
