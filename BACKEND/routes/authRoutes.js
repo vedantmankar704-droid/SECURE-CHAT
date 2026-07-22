@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { registerUser, loginUser, getProfile, getCurrentUser, uploadAvatar, updateProfile } = require('../controllers/authController');
+const { 
+  registerUser, loginUser, getProfile, getCurrentUser, uploadAvatar, updateProfile,
+  forgotPassword, verifyOTP, resendOTP, resetPassword 
+} = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
@@ -21,5 +24,11 @@ router.post('/upload-avatar', protect, upload.single('avatar'), uploadAvatar);
 
 // PUT /api/auth/profile
 router.put('/profile', protect, updateProfile);
+
+// Forgot Password OTP routes
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-otp', verifyOTP);
+router.post('/resend-otp', resendOTP);
+router.post('/reset-password', resetPassword);
 
 module.exports = router;

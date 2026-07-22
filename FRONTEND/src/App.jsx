@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import Welcome from './pages/Welcome';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Requests from './pages/Requests';
@@ -23,8 +24,8 @@ function App() {
         try {
           const user = await fetchCurrentUser();
           if (user) {
-            // Only redirect to dashboard if they are on welcome/login/register
-            if (['welcome', 'login', 'register'].includes(currentPage)) {
+            // Only redirect to dashboard if they are on welcome/login/register/forgot-password
+            if (['welcome', 'login', 'register', 'forgot-password'].includes(currentPage)) {
               navigateTo('dashboard');
             }
           } else {
@@ -36,7 +37,7 @@ function App() {
         }
       } else {
         // If not logged in and they attempt to access protected pages, redirect to welcome
-        if (!['welcome', 'login', 'register'].includes(currentPage)) {
+        if (!['welcome', 'login', 'register', 'forgot-password'].includes(currentPage)) {
           navigateTo('welcome');
         }
       }
@@ -108,6 +109,8 @@ function App() {
         return <Login onNavigate={navigateTo} />;
       case 'register':
         return <Register onNavigate={navigateTo} />;
+      case 'forgot-password':
+        return <ForgotPassword onNavigate={navigateTo} />;
       case 'dashboard':
         return (
           <ProtectedRoute>

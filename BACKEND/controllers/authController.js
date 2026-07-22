@@ -303,12 +303,233 @@ const updateProfile = async (req, res) => {
   }
 };
 
+// @desc    Forgot Password - request OTP
+// @route   POST /api/auth/forgot-password
+// @access  Public
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found with this email" });
+    }
+
+    // Rate limit check: 60s resend buffer
+    const now = new Date();
+    if (user.lastOTPRequest && (now - new Date(user.lastOTPRequest)) < 60000) {
+      const waitTime = Math.ceil((60000 - (now - new Date(user.lastOTPRequest))) / 1000);
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${waitTime}s before requesting a new OTP.`
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hash OTP
+    const salt = await bcrypt.genSalt(10);
+    const hashedOTP = await bcrypt.hash(otp, salt);
+
+    user.resetOTP = hashedOTP;
+    user.resetOTPExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    user.otpAttempts = 0;
+    user.lastOTPRequest = now;
+    user.resetOTPVerified = false;
+
+    await user.save();
+
+    const { sendOTPEmail } = require('../utils/email');
+    await sendOTPEmail(user.email, otp);
+
+    res.json({
+      success: true,
+      message: "OTP sent successfully to your registered email"
+    });
+  } catch (error) {
+    console.error(`Forgot password error: ${error.message}`);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// @desc    Verify OTP
+// @route   POST /api/auth/verify-otp
+// @access  Public
+const verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, message: "Email and OTP are required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Brute force protection: Max 5 attempts
+    if (user.otpAttempts >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: "Maximum OTP attempts exceeded. Please request a new OTP."
+      });
+    }
+
+    // Expiry check
+    if (!user.resetOTP || !user.resetOTPExpires || new Date(user.resetOTPExpires) < Date.now()) {
+      return res.status(400).json({ success: false, message: "OTP has expired or is invalid" });
+    }
+
+    // Verify code match
+    const isMatch = await bcrypt.compare(otp, user.resetOTP);
+    if (!isMatch) {
+      user.otpAttempts += 1;
+      await user.save();
+      const remaining = 5 - user.otpAttempts;
+      return res.status(400).json({
+        success: false,
+        message: `Invalid OTP. ${remaining} attempts remaining.`
+      });
+    }
+
+    // Code is valid
+    user.resetOTPVerified = true;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "OTP verified successfully. You can now reset your password."
+    });
+  } catch (error) {
+    console.error(`Verify OTP error: ${error.message}`);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// @desc    Resend OTP
+// @route   POST /api/auth/resend-otp
+// @access  Public
+const resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Rate limit check: 60s
+    const now = new Date();
+    if (user.lastOTPRequest && (now - new Date(user.lastOTPRequest)) < 60000) {
+      const waitTime = Math.ceil((60000 - (now - new Date(user.lastOTPRequest))) / 1000);
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${waitTime}s before requesting a new OTP.`
+      });
+    }
+
+    // Generate new OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hash and save
+    const salt = await bcrypt.genSalt(10);
+    const hashedOTP = await bcrypt.hash(otp, salt);
+
+    user.resetOTP = hashedOTP;
+    user.resetOTPExpires = Date.now() + 10 * 60 * 1000;
+    user.otpAttempts = 0;
+    user.lastOTPRequest = now;
+    user.resetOTPVerified = false;
+
+    await user.save();
+
+    const { sendOTPEmail } = require('../utils/email');
+    await sendOTPEmail(user.email, otp);
+
+    res.json({
+      success: true,
+      message: "A new OTP has been sent to your email"
+    });
+  } catch (error) {
+    console.error(`Resend OTP error: ${error.message}`);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// @desc    Reset Password
+// @route   POST /api/auth/reset-password
+// @access  Public
+const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP and new password are required"
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Check if OTP was verified
+    if (!user.resetOTPVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP must be verified before resetting password"
+      });
+    }
+
+    // Validate password length
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long"
+      });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Save password and clear OTP fields
+    user.password = hashedPassword;
+    user.resetOTP = "";
+    user.resetOTPExpires = null;
+    user.otpAttempts = 0;
+    user.resetOTPVerified = false;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Password reset successfully. You can now login with your new password."
+    });
+  } catch (error) {
+    console.error(`Reset password error: ${error.message}`);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getProfile,
   getCurrentUser,
   uploadAvatar,
-  updateProfile
+  updateProfile,
+  forgotPassword,
+  verifyOTP,
+  resendOTP,
+  resetPassword
 };
 

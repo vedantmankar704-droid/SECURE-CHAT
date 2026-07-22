@@ -54,6 +54,24 @@ const userSchema = new mongoose.Schema({
   publicKey: {
     type: String,
     default: ""
+  },
+  resetOTP: {
+    type: String,
+    default: ""
+  },
+  resetOTPExpires: {
+    type: Date
+  },
+  otpAttempts: {
+    type: Number,
+    default: 0
+  },
+  lastOTPRequest: {
+    type: Date
+  },
+  resetOTPVerified: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true
