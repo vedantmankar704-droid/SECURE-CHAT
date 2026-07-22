@@ -1,8 +1,15 @@
+require('dotenv').config();
 const nodemailer = require('nodemailer');
 
-const emailService = process.env.EMAIL_SERVICE;
-const emailUser = process.env.EMAIL_USER;
-const emailPass = process.env.EMAIL_PASS;
+const emailService = (process.env.EMAIL_SERVICE || '').trim();
+const emailUser = (process.env.EMAIL_USER || '').trim();
+const emailPass = (process.env.EMAIL_PASS || '').trim();
+
+// Log credentials securely (password only printed as length)
+console.log('✉️  Nodemailer Email Service Startup Configuration:');
+console.log(`   - EMAIL_SERVICE: "${emailService}"`);
+console.log(`   - EMAIL_USER: "${emailUser}"`);
+console.log(`   - EMAIL_PASS (Length): ${emailPass.length}`);
 
 // Validate that Gmail SMTP environment variables exist
 if (!emailService || !emailUser || !emailPass) {
@@ -18,7 +25,7 @@ if (!emailService || !emailUser || !emailPass) {
 
 // Create Gmail SMTP transporter
 const transporter = nodemailer.createTransport({
-  service: emailService,
+  service: emailService.toLowerCase() === 'gmail' ? 'gmail' : emailService,
   auth: {
     user: emailUser,
     pass: emailPass

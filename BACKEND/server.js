@@ -1,6 +1,9 @@
+// Load environment variables
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
@@ -10,9 +13,6 @@ const userRoutes = require('./routes/userRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const friendRoutes = require('./routes/friendRoutes');
 const { initSocket } = require('./socket/socket');
-
-// Load environment variables
-dotenv.config();
 
 // Connect to Database
 connectDB();
